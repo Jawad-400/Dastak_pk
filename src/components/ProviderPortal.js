@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import '../styles.css';
 import { useNavigate } from 'react-router-dom';
 import { FaTools, FaUserShield, FaChartLine } from 'react-icons/fa';
 import CITIES from '../data/pakistanCities';

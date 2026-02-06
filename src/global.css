@@ -1,0 +1,5 @@
+﻿/* Global CSS Import Helper */
+/* This ensures all components have access to styles */
+
+/* No need to import styles.css in every component anymore */
+/* The main styles.css is imported in App.js */

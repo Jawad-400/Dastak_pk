@@ -25,15 +25,15 @@ const Hero = () => {
           <div className="stat-label">Services Completed</div>
         </div>
         <div className="stat-item">
-          <div className="stat-number">4.8★</div>
+          <div className="stat-number">4.9★</div>
           <div className="stat-label">Average Rating</div>
         </div>
         <div className="stat-item">
-          <div className="stat-number">₹2.5Cr+</div>
+          <div className="stat-number">2.5Cr PKR+</div>
           <div className="stat-label">Earned by Providers</div>
         </div>
         <div className="stat-item">
-          <div className="stat-number">98%</div>
+          <div className="stat-number">97.8%</div>
           <div className="stat-label">Satisfaction Rate</div>
         </div>
       </div>
@@ -52,7 +52,7 @@ const Hero = () => {
           <span className="btn-icon">💼</span>
           <span className="btn-text">
             <strong>Join as Provider</strong>
-            <small>Earn 15,000 PKR- 50,000 PKR/month</small>
+            <small>Earn 40,000 PKR - 100,000 PKR/month</small>
           </span>
         </button>
       </div>
@@ -212,3 +212,4 @@ const Hero = () => {
 };
 
 export default Hero;
+

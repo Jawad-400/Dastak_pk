@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import '../styles.css';
 import { useNavigate } from 'react-router-dom';
 import { 
   FaTools, FaMapMarkerAlt, FaCalendarAlt, 
@@ -11,7 +10,7 @@ import {
 } from 'react-icons/fa';
 import { socket } from '../Services/socket';
 
-const PostRequest = () => {
+const FindJobs = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -95,7 +94,7 @@ const PostRequest = () => {
     };
     
     addDebug(`Form data: ${JSON.stringify(requestData)}`);
-    addDebug(`WebSocket connected: ${socket.connected}`);
+    addDebug(`WebSocket connected: ${socket.connected}`); // FIXED: changed from isConnected() to connected
     
     try {
       // 3. Send via WebSocket
@@ -105,8 +104,8 @@ const PostRequest = () => {
       const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
       setRequestId(newRequestId);
       
-      // Send the request
-      socket.emit('create_request', {
+      // Send the request - FIXED: changed from send to emit
+      socket.emit('create_request', { // FIXED: changed from socket.send to socket.emit
         id: newRequestId,
         data: requestData
       });
@@ -163,6 +162,7 @@ const PostRequest = () => {
     const testId = `test_${Date.now()}`;
     addDebug(`Testing WebSocket with ID: ${testId}`);
     
+    // FIXED: changed from socket.send to socket.emit
     socket.emit('create_request', {
       id: testId,
       data: {
@@ -212,15 +212,15 @@ const PostRequest = () => {
         <p style={styles.subtitle}>Describe your service need and get Orders from local providers</p>
       </div>
 
-      {/* Connection Status */}
+      {/* Connection Status - FIXED: changed from socket.isConnected() to socket.connected */}
       <div style={{
         ...styles.connectionStatus,
         backgroundColor: socket.connected ? '#d4edda' : '#f8d7da',
-        color: socket.isConnected() ? '#155724' : '#721c24',
-        border: socket.isConnected() ? '2px solid #28a745' : '2px solid #dc3545'
+        color: socket.connected ? '#155724' : '#721c24',
+        border: socket.connected ? '2px solid #28a745' : '2px solid #dc3545'
       }}>
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
-          {socket.isConnected() ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
+          {socket.connected ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
           <button 
             onClick={() => socket.connect()} 
             style={{padding: '3px 10px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
@@ -229,7 +229,7 @@ const PostRequest = () => {
           </button>
         </div>
         <small style={{display: 'block', marginTop: '5px'}}>
-          {socket.isConnected() 
+          {socket.connected 
             ? 'Providers will see your request instantly' 
             : 'Connect to WebSocket server for live updates'}
         </small>
@@ -812,4 +812,4 @@ styleTag.innerHTML = `
 `;
 document.head.appendChild(styleTag);
 
-export default PostRequest;
+export default FindJobs;

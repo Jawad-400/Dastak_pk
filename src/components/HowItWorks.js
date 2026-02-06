@@ -1,4 +1,5 @@
 import React from 'react';
+import '../styles.css';
 import { FaClipboardList, FaUsers, FaMoneyBillWave, FaCheckCircle } from 'react-icons/fa';
 
 const HowItWorks = () => {

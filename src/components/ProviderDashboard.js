@@ -1,4 +1,5 @@
 import React from 'react';
+import '../styles.css';
 import { FaBell, FaWallet, FaStar, FaMapMarkerAlt, FaCalendarAlt, FaUser, FaCheckCircle, FaSearch } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 

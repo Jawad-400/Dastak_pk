@@ -1,28 +1,37 @@
-import React, { Suspense, lazy } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
+
+// Layout Components
 import Header from './components/Header';
+import Footer from './components/Footer';
+
+// Home Page Components
 import Hero from './components/Hero';
 import ServicesCategories from './components/ServicesCategories';
-import ServicePage from './components/ServicePage';
 import HowItWorks from './components/HowItWorks';
-import PostRequest from './components/PostRequest';
 import UserSignup from './components/UserSignup';
 import Testimonials from './components/Testimonials';
-import Footer from './components/Footer';
+
+// Service Components
+import ServicePage from './components/ServicePage';
+import PostRequest from './components/PostRequest';
+
+// Customer Components
+import CustomerOrderTracking from './components/CustomerOrderTracking';
+import CustomerLogin from './components/auth/CustomerLogin';
+
+// Provider Components
 import ProviderPortal from './components/ProviderPortal';
 import ProviderDashboard from './components/ProviderDashboard';
-import CustomerAuth from './components/CustomerAuth';
-import CustomerLogin from './components/CustomerLogin';
 import ProviderJobsFeed from './components/provider/ProviderJobsFeed';
 import PlaceorderModal from './components/provider/PlaceorderModal';
 import MyOrders from './components/provider/MyOrders';
-import FindJobs from './components/provider/FindJob';
-import CustomerOrderTracking from './components/CustomerOrderTracking';
+
+// WebSocket Components
+import FindJobs from './components/WebSocket/FindJobs';
 
 import './styles.css';
-
-const CustomerPortalMap = lazy(() => import('./pages/CustomerPortalMap'));
 
 // Home Page Component
 function HomePage() {
@@ -50,28 +59,23 @@ function ProviderDashboardPage() {
   return <ProviderDashboard />;
 }
 
-// Customer Auth Page
-function CustomerAuthPage() {
-  return <CustomerAuth />;
-}
-
 // Customer Login Page
 function CustomerLoginPage() {
   return <CustomerLogin />;
 }
 
-// Main App Component with conditional header
+// Main App Component with conditional header/footer
 function AppContent() {
   const location = useLocation();
   
   // Hide header on provider pages
   const hideHeader = location.pathname.includes('/provider-dashboard') || 
-                     location.pathname.includes('/my-Orders') || 
+                     location.pathname.includes('/my-orders') || 
                      location.pathname.includes('/find-jobs');
   
   // Hide footer on provider pages
   const hideFooter = location.pathname.includes('/provider-dashboard') || 
-                     location.pathname.includes('/my-Orders') || 
+                     location.pathname.includes('/my-orders') || 
                      location.pathname.includes('/find-jobs');
 
   return (
@@ -83,29 +87,17 @@ function AppContent() {
         <Route path="/services" element={<ServicePage />} />
         <Route path="/post-request" element={<PostRequest />} />
         <Route path="/customer-login" element={<CustomerLoginPage />} />
-        <Route path="/customer-portal" element={<CustomerAuthPage />} />
-        <Route path="/customer-orders" element={<CustomerOrderTracking />} />
+        <Route path="/customer-portal" element={<CustomerOrderTracking />} />
+        
         {/* Provider Routes */}
         <Route path="/provider-portal" element={<ProviderPortalPage />} />
         <Route path="/provider-dashboard" element={<ProviderDashboardPage />} />
         <Route path="/provider/jobs" element={<ProviderJobsFeed />} />
         <Route path="/provider/place-order" element={<PlaceorderModal />} />
- 
-<Route path="/post-request" element={<PostRequest />} />
         
-        {/* New Provider Routes */}
+        {/* Provider Routes */}
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/find-jobs" element={<FindJobs />} />
-        
-        {/* Customer Portal Map */}
-        <Route 
-          path="/customer-portal-map" 
-          element={
-            <Suspense fallback={<div className="panel">Loading map...</div>}>
-              <CustomerPortalMap />
-            </Suspense>
-          } 
-        />
       </Routes>
       {!hideFooter && <Footer />}
     </div>

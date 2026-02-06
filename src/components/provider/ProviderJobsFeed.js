@@ -1,12 +1,52 @@
 import React, { useState, useEffect } from 'react';
+import { socket } from '../../Services/socket';
 import { useNavigate } from 'react-router-dom';
-import '../../styles.css';
 
 const ProviderJobsFeed = () => {
   const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [filter, setFilter] = useState('all');
   const [selectedJob, setSelectedJob] = useState(null);
+
+  // Real-time request listening - ONLY ONE useEffect needed
+  useEffect(() => {
+    if (socket.connected) {
+      console.log('Provider connected to WebSocket');
+      
+      // Listen for new service requests
+      const handleNewRequest = (request) => {
+        console.log('New real-time request received:', request);
+        // Add to jobs list
+        setJobs(prev => [{
+          id: request.requestId || Date.now(),
+          title: request.serviceType || 'Service Request',
+          description: request.description || 'New service request',
+          budget: request.budget || 'Negotiable',
+          location: request.location || 'Location not specified',
+          urgency: request.urgency || 'normal',
+          postedTime: 'Just now',
+          customerName: request.customer?.name || 'Customer'
+        }, ...prev]);
+        
+        // Show notification (using alert or better notification system)
+        if (Notification.permission === 'granted') {
+          new Notification('New Service Request', {
+            body: `${request.serviceType || 'Service'} request received`,
+            icon: '/notification-icon.png'
+          });
+        } else {
+          alert(`New service request: ${request.serviceType || 'Service'}`);
+        }
+      };
+      
+      socket.on('new-service-request', handleNewRequest);
+      
+      // Cleanup
+      return () => {
+        socket.off('new-service-request', handleNewRequest);
+      };
+    }
+  }, []);
 
   // Sample available jobs data
   const availableJobs = [

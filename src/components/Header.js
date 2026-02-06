@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { FaSignInAlt, FaTools, FaBars } from 'react-icons/fa';
 import { useNavigate, Link } from 'react-router-dom';
-import CustomerLoginModal from './CustomerLoginModal';
 
 const Header = () => {
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -18,11 +16,11 @@ const Header = () => {
             {/* Logo */}
             <Link to="/" className="logo" onClick={closeMobileMenu}>
               <span className="logo-main">DASTAK</span>
-              <span className="logo-urdu">دستک</span>
-              <span className="logo-registered">®</span>
+              <span className="logo-urdu">????</span>
+              <span className="logo-registered">�</span>
             </Link>
 
-            {/* Hamburger menu - visible on mobile only */}
+            {/* Hamburger menu */}
             <button
               type="button"
               className="menu-toggle"
@@ -32,7 +30,7 @@ const Header = () => {
               <FaBars />
             </button>
 
-            {/* Nav links + Auth - hidden on mobile until hamburger clicked */}
+            {/* Nav links + Auth */}
             <div className={`nav-links ${mobileMenuOpen ? 'active' : ''}`}>
               <div className="main-nav">
                 <Link to="/" className="nav-link" onClick={closeMobileMenu}>
@@ -56,7 +54,10 @@ const Header = () => {
                 <button
                   type="button"
                   className="btn btn-customer"
-                  onClick={() => { setShowCustomerModal(true); closeMobileMenu(); }}
+                  onClick={() => { 
+                    navigate('/customer-login'); 
+                    closeMobileMenu(); 
+                  }}
                 >
                   <FaSignInAlt className="btn-icon" />
                   <span className="btn-text">Customer Sign In</span>
@@ -64,7 +65,10 @@ const Header = () => {
                 <button
                   type="button"
                   className="btn btn-provider"
-                  onClick={() => { navigate('/provider-portal'); closeMobileMenu(); }}
+                  onClick={() => { 
+                    navigate('/provider-portal'); 
+                    closeMobileMenu(); 
+                  }}
                 >
                   <FaTools className="btn-icon" />
                   <span className="btn-text">Provider Portal</span>
@@ -75,7 +79,7 @@ const Header = () => {
         </div>
       </header>
 
-      {/* Mobile menu backdrop - click to close */}
+      {/* Mobile menu backdrop */}
       {mobileMenuOpen && (
         <div
           className="mobile-menu-overlay"
@@ -86,10 +90,10 @@ const Header = () => {
           aria-label="Close menu"
         />
       )}
-
-      <CustomerLoginModal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} />
     </>
   );
 };
 
 export default Header;
+
+
