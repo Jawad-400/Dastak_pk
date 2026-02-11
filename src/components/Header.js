@@ -16,8 +16,8 @@ const Header = () => {
             {/* Logo */}
             <Link to="/" className="logo" onClick={closeMobileMenu}>
               <span className="logo-main">DASTAK</span>
-              <span className="logo-urdu">????</span>
-              <span className="logo-registered">�</span>
+              <span className="logo-urdu">دستک</span>
+              <span className="logo-registered">®</span>
             </Link>
 
             {/* Hamburger menu */}

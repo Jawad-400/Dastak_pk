@@ -3,8 +3,8 @@ import '../styles.css';
 import { useNavigate } from 'react-router-dom';
 import { 
   FaTools, FaMapMarkerAlt, FaCalendarAlt, 
-  FaRupeeSign, FaPhone, FaClipboard, FaArrowLeft,
-  FaCheckCircle, FaClock, FaUser, FaBullhorn,
+  FaPhone, FaArrowLeft,
+  FaCheckCircle, FaUser, FaBullhorn,
   FaSpinner, FaExclamationTriangle,
   FaPen,
   FaMoneyBill
@@ -19,6 +19,7 @@ const PostRequest = () => {
   const [success, setSuccess] = useState(false);
   const [requestId, setRequestId] = useState('');
   const [debugLogs, setDebugLogs] = useState([]);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [formData, setFormData] = useState({
     serviceType: '',
     description: '',
@@ -30,40 +31,80 @@ const PostRequest = () => {
   });
 
   const serviceCategories = [
-    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage, Kit, Kitchen Drainage Issues, Other...' },
-    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Board Issues, Light Breakage, Other...' },
-    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing, Gas Filling, AC Not Working, Cooling Issues, Other ... ' },
-    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing, Polishing, New, Other ...' },
-    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling, Wall Papers, Other ...' },
-    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning, Garden Cleaning, Dusting, Other ...' },
-    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine, Fridge, AC, LCD, Oven, Heater, Stove, Other ...' },
-    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite, Cockroach, Mosquito, Sprays, Other ...' },
+    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage, Kitchen Drainage Issues' },
+    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Board Issues, Light Breakage' },
+    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing, Gas Filling, AC Not Working, Cooling Issues' },
+    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing, Polishing' },
+    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling, Wall Papers' },
+    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning, Garden Cleaning, Dusting' },
+    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine, Fridge, LCD, Oven, Heater, Stove' },
+    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite, Cockroach, Mosquito, Sprays, Fumigation' },
   ];
 
   // Add debug log
   const addDebug = (msg) => {
     console.log('🔧', msg);
-    setDebugLogs(prev => [...prev.slice(-9), {
-      time: new Date().toLocaleTimeString(),
-      msg
-    }]);
+    setDebugLogs(prev => {
+      const newLogs = [...prev, {
+        time: new Date().toLocaleTimeString(),
+        msg
+      }];
+      // Keep only last 10 logs
+      return newLogs.slice(-10);
+    });
   };
 
   // Connect WebSocket
   useEffect(() => {
     addDebug('Component mounted, connecting WebSocket...');
+    
+    // Connect socket
     socket.connect();
     
-    // Listen for WebSocket events
-    const onConnect = () => addDebug('✅ WebSocket connected');
-    const onDisconnect = () => addDebug('❌ WebSocket disconnected');
+    // Set up event listeners
+    const handleConnect = () => {
+      addDebug('✅ WebSocket connected');
+      setSocketConnected(true);
+    };
     
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
+    const handleDisconnect = () => {
+      addDebug('❌ WebSocket disconnected');
+      setSocketConnected(false);
+    };
+    
+    // Add event listeners
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    
+    // Listen for request confirmation from server
+    socket.on('request_created', (data) => {
+      addDebug(`✅ Server confirmed request creation: ${JSON.stringify(data)}`);
+      if (data.id === requestId) {
+        setSuccess(true);
+      }
+    });
+    
+    // Listen for request acceptance by provider
+    socket.on('request_accepted', (data) => {
+      addDebug(`✅ Provider accepted your request: ${JSON.stringify(data)}`);
+      if (data.request_id === requestId) {
+        alert(`🎉 Your request has been accepted by ${data.provider}! They will contact you soon.`);
+      }
+    });
+    
+    // Simulate connection for mock socket
+    setTimeout(() => {
+      if (!socketConnected && socket.connected) {
+        handleConnect();
+      }
+    }, 500);
     
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
+      // Clean up listeners
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('request_created');
+      socket.off('request_accepted');
     };
   }, []);
 
@@ -81,8 +122,12 @@ const PostRequest = () => {
     setError('');
     setLoading(true);
     
-    // 2. Prepare data
+    // 2. Prepare data - FOR GO WEB SOCKET SERVER
+    const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    setRequestId(newRequestId);
+    
     const requestData = {
+      id: newRequestId,
       title: formData.serviceType,
       description: formData.description,
       location: formData.location,
@@ -90,52 +135,84 @@ const PostRequest = () => {
       budget: formData.budget || 'Negotiable',
       contact_number: formData.contactNumber,
       customer_name: formData.customerName,
+      // Required for Go server
+      customer_id: `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`, // In real app, get from auth
       service_type: formData.serviceType.toLowerCase().replace(/\s+/g, '_'),
       timestamp: Date.now()
     };
     
-    addDebug(`Form data: ${JSON.stringify(requestData)}`);
-    addDebug(`WebSocket connected: ${socket.connected}`);
+    addDebug(`Form data prepared: ${JSON.stringify(requestData, null, 2)}`);
+    addDebug(`WebSocket connected: ${socketConnected}`);
     
     try {
-      // 3. Send via WebSocket
-      addDebug('Sending via WebSocket...');
+      // 3. Send via WebSocket - FORMAT FOR GO SERVER
+      addDebug('Sending request to WebSocket server...');
       
-      // Create unique request ID
-      const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      setRequestId(newRequestId);
-      
-      // Send the request
-      socket.emit('create_request', {
-        id: newRequestId,
-        data: requestData
-      });
-      
-      addDebug(`✅ Request sent! ID: ${newRequestId}`);
+      // Send the request - Go server expects this exact format
+      if (socket && typeof socket.emit === 'function') {
+        socket.emit('create_request', {
+          id: newRequestId,
+          title: formData.serviceType,
+          description: formData.description,
+          location: formData.location,
+          budget: formData.budget || 'Negotiable',
+          customer_id: `cust_${Date.now()}`,
+          customer_name: formData.customerName,
+          service_type: formData.serviceType.toLowerCase().replace(/\s+/g, '_'),
+          schedule: formData.schedule,
+          contact_number: formData.contactNumber,
+          timestamp: Date.now()
+        });
+        addDebug(`✅ Request sent to WebSocket server! ID: ${newRequestId}`);
+        
+        // Also send to REST API as backup
+        try {
+          const apiResponse = await fetch('http://localhost:8080/api/requests', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestData)
+          });
+          
+          if (apiResponse.ok) {
+            addDebug('✅ Request also saved to REST API');
+          }
+        } catch (apiError) {
+          addDebug(`⚠️ REST API error: ${apiError.message}`);
+        }
+      } else {
+        addDebug(`⚠️ WebSocket not available, saving locally`);
+        // Fallback: Save to localStorage
+        const existingRequests = JSON.parse(localStorage.getItem('dastak_requests') || '[]');
+        localStorage.setItem('dastak_requests', JSON.stringify([...existingRequests, requestData]));
+      }
       
       // 4. Show success
       setSuccess(true);
+      setLoading(false);
       
-      // 5. Clear form after 3 seconds
+      // 5. Clear form after 5 seconds
       setTimeout(() => {
         setFormData({
           serviceType: '',
           description: '',
           location: '',
-          schedule: 'asap',
+          schedule: 'ASAP',
           budget: '',
           contactNumber: '',
           customerName: '',
         });
         setStep(1);
         setSuccess(false);
-      }, 3000);
+        addDebug('Form reset for new request');
+      }, 5000);
       
     } catch (err) {
       addDebug(`❌ Error: ${err.message}`);
       setError('Failed to post request. Please try again.');
-    } finally {
       setLoading(false);
+    } finally {
       addDebug('=== FORM SUBMIT COMPLETED ===');
     }
   };
@@ -163,18 +240,25 @@ const PostRequest = () => {
     const testId = `test_${Date.now()}`;
     addDebug(`Testing WebSocket with ID: ${testId}`);
     
-    socket.emit('create_request', {
-      id: testId,
-      data: {
+    // Safely emit test event
+    if (socket && typeof socket.emit === 'function') {
+      socket.emit('create_request', {
+        id: testId,
         title: 'TEST Plumbing Service',
-        description: 'This is a test request',
+        description: 'This is a test request for plumbing service',
         location: 'Test Street, Lahore',
-        amount: 1000,
-        customer: 'Test User',
+        budget: '1500 PKR',
+        customer_id: 'test_customer',
+        customer_name: 'Test User',
+        service_type: 'plumbing',
         schedule: 'ASAP',
+        contact_number: '+92 300 0000000',
         timestamp: Date.now()
-      }
-    });
+      });
+      addDebug(`✅ Test request sent via WebSocket`);
+    } else {
+      addDebug(`⚠️ WebSocket emit not available`);
+    }
     
     alert(`Test request sent! Check console. ID: ${testId}`);
   };
@@ -183,15 +267,28 @@ const PostRequest = () => {
   const quickTest = () => {
     setFormData({
       serviceType: 'Plumbing',
-      description: 'Fix leaking kitchen sink pipe',
-      location: 'Gulberg, Lahore',
+      description: 'Fix leaking kitchen sink pipe. The pipe under the sink is leaking and needs replacement. Water is dripping constantly.',
+      location: 'House No. 123, Street 5, Gulberg, Lahore',
       schedule: 'today',
-      budget: '2000',
+      budget: '2000 PKR',
       contactNumber: '+92 300 1234567',
-      customerName: 'Test Customer',
+      customerName: 'Ahmed Raza',
     });
     setStep(3);
     addDebug('Form filled with test data');
+    setError('');
+  };
+
+  // Manual connect button
+  const manualConnect = () => {
+    addDebug('Manually connecting WebSocket...');
+    if (socket && typeof socket.connect === 'function') {
+      socket.connect();
+      setTimeout(() => {
+        setSocketConnected(socket.connected);
+        addDebug(socket.connected ? '✅ Manual connect successful' : '❌ Manual connect failed');
+      }, 300);
+    }
   };
 
   return (
@@ -215,22 +312,22 @@ const PostRequest = () => {
       {/* Connection Status */}
       <div style={{
         ...styles.connectionStatus,
-        backgroundColor: socket.connected ? '#d4edda' : '#f8d7da',
-        color: socket.isConnected() ? '#155724' : '#721c24',
-        border: socket.isConnected() ? '2px solid #28a745' : '2px solid #dc3545'
+        backgroundColor: socketConnected ? '#d4edda' : '#f8d7da',
+        color: socketConnected ? '#155724' : '#721c24',
+        border: socketConnected ? '2px solid #28a745' : '2px solid #dc3545'
       }}>
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
-          {socket.isConnected() ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
+          {socketConnected ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
           <button 
-            onClick={() => socket.connect()} 
-            style={{padding: '3px 10px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
+            onClick={manualConnect}
+            style={{padding: '5px 12px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
           >
-            Reconnect
+            Connect
           </button>
         </div>
         <small style={{display: 'block', marginTop: '5px'}}>
-          {socket.isConnected() 
-            ? 'Providers will see your request instantly' 
+          {socketConnected 
+            ? 'Providers will see your request instantly in real-time' 
             : 'Connect to WebSocket server for live updates'}
         </small>
       </div>
@@ -239,12 +336,15 @@ const PostRequest = () => {
       {success && (
         <div style={styles.successBox}>
           <FaCheckCircle style={{fontSize: '50px', color: '#28a745', marginBottom: '15px'}} />
-          <h2>Request Posted Successfully!</h2>
-          <p>Request ID: <strong>{requestId}</strong></p>
-          <p>Providers are now being notified about your request.</p>
-          <p style={{fontSize: '12px', color: '#666', marginTop: '15px'}}>
-            This page will reset in 3 seconds...
-          </p>
+          <h2>🎉 Request Posted Successfully!</h2>
+          <p>Request ID: <strong style={{backgroundColor: '#e9ecef', padding: '5px 10px', borderRadius: '4px'}}>{requestId}</strong></p>
+          <p>✅ Sent to all available providers in real-time</p>
+          <p>🔔 You will be notified when a provider accepts</p>
+          <div style={{marginTop: '20px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px'}}>
+            <span style={{fontSize: '12px', color: '#666'}}>
+              This page will reset in 5 seconds...
+            </span>
+          </div>
         </div>
       )}
 
@@ -259,7 +359,7 @@ const PostRequest = () => {
       {/* Debug Panel */}
       <div style={styles.debugPanel}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-          <strong>WebSocket Debug</strong>
+          <strong>Debug Console</strong>
           <div>
             <button 
               onClick={testWebSocket}
@@ -281,7 +381,8 @@ const PostRequest = () => {
           ) : (
             debugLogs.map((log, idx) => (
               <div key={idx} style={styles.logLine}>
-                <span style={{color: '#666'}}>[{log.time}]</span> {log.msg}
+                <span style={{color: '#666', fontFamily: 'monospace', fontSize: '11px'}}>[{log.time}]</span>
+                <span style={{marginLeft: '10px', fontFamily: 'monospace', fontSize: '12px'}}>{log.msg}</span>
               </div>
             ))
           )}
@@ -338,7 +439,7 @@ const PostRequest = () => {
                   </label>
                   <textarea
                     style={styles.textarea}
-                    placeholder="Describe what you need in detail..."
+                    placeholder="Describe what you need in detail. Be specific about the problem, location in your house, and any special requirements..."
                     rows="6"
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
@@ -368,7 +469,7 @@ const PostRequest = () => {
                   <input
                     type="text"
                     style={styles.input}
-                    placeholder="Enter complete address"
+                    placeholder="Enter complete address with street, area, city, and landmarks"
                     value={formData.location}
                     onChange={(e) => setFormData({...formData, location: e.target.value})}
                     required
@@ -386,7 +487,7 @@ const PostRequest = () => {
                       onChange={(e) => setFormData({...formData, schedule: e.target.value})}
                       required
                     >
-                      <option value="asap">As soon as possible</option>
+                      <option value="ASAP">As soon as possible</option>
                       <option value="today">Today</option>
                       <option value="tomorrow">Tomorrow</option>
                       <option value="this-week">This Week</option>
@@ -397,12 +498,12 @@ const PostRequest = () => {
 
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaMoneyBill /> Budget *
+                      <FaMoneyBill /> Budget
                     </label>
                     <input
                       type="text"
                       style={styles.input}
-                      placeholder="e.g., 2,000 PKR"
+                      placeholder="e.g., 2,000 PKR (Optional)"
                       value={formData.budget}
                       onChange={(e) => setFormData({...formData, budget: e.target.value})}
                     />
@@ -424,7 +525,7 @@ const PostRequest = () => {
             {step === 3 && (
               <div style={styles.stepContainer}>
                 <h2 style={styles.stepTitle}>
-                  <FaUser style={styles.stepIcon} /> Contact Information:
+                  <FaUser style={styles.stepIcon} /> Contact Information
                 </h2>
 
                 <div style={styles.formRow}>
@@ -464,13 +565,24 @@ const PostRequest = () => {
                     <strong>Service:</strong> {formData.serviceType}
                   </div>
                   <div style={styles.summaryItem}>
+                    <strong>Description:</strong> {formData.description.substring(0, 50)}...
+                  </div>
+                  <div style={styles.summaryItem}>
                     <strong>Location:</strong> {formData.location}
                   </div>
                   <div style={styles.summaryItem}>
-                    <strong>Schedule:</strong> {formData.schedule === 'asap' ? 'ASAP' : formData.schedule}
+                    <strong>Schedule:</strong> {formData.schedule}
                   </div>
                   <div style={styles.summaryItem}>
                     <strong>Budget:</strong> {formData.budget || 'Negotiable'}
+                  </div>
+                </div>
+
+                <div style={{textAlign: 'center', margin: '20px 0'}}>
+                  <div style={{fontSize: '14px', color: '#666', marginBottom: '10px'}}>
+                    {socketConnected 
+                      ? '✅ Your request will be sent to providers instantly in real-time' 
+                      : '⚠️ WebSocket offline - providers won\'t see your request live'}
                   </div>
                 </div>
 
@@ -511,7 +623,7 @@ const styles = {
     maxWidth: '1200px',
     margin: '0 auto',
     padding: '20px',
-    fontFamily: 'Arial, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
   },
   backButton: {
     marginBottom: '20px',
@@ -528,14 +640,19 @@ const styles = {
     border: 'none',
     borderRadius: '5px',
     cursor: 'pointer',
-    fontSize: '16px'
+    fontSize: '16px',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#5a6268'
+    }
   },
   connectionStatus: {
     padding: '15px',
     borderRadius: '8px',
     marginBottom: '20px',
     textAlign: 'center',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
   },
   header: {
     textAlign: 'center',
@@ -544,11 +661,14 @@ const styles = {
   title: {
     fontSize: '36px',
     color: '#333',
-    marginBottom: '10px'
+    marginBottom: '10px',
+    fontWeight: '700'
   },
   subtitle: {
     fontSize: '18px',
-    color: '#666'
+    color: '#666',
+    maxWidth: '600px',
+    margin: '0 auto'
   },
   successBox: {
     backgroundColor: '#d4edda',
@@ -557,7 +677,8 @@ const styles = {
     borderRadius: '10px',
     textAlign: 'center',
     marginBottom: '30px',
-    border: '2px solid #c3e6cb'
+    border: '2px solid #c3e6cb',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
   },
   errorBox: {
     backgroundColor: '#f8d7da',
@@ -566,14 +687,16 @@ const styles = {
     borderRadius: '5px',
     marginBottom: '20px',
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderLeft: '4px solid #dc3545'
   },
   debugPanel: {
     backgroundColor: '#f8f9fa',
     border: '1px solid #dee2e6',
     borderRadius: '8px',
     padding: '15px',
-    marginBottom: '20px'
+    marginBottom: '20px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
   },
   logsBox: {
     maxHeight: '150px',
@@ -582,20 +705,28 @@ const styles = {
     padding: '10px',
     borderRadius: '5px',
     fontSize: '12px',
-    fontFamily: 'monospace'
+    fontFamily: 'monospace',
+    border: '1px solid #e9ecef'
   },
   logLine: {
-    marginBottom: '3px',
-    paddingBottom: '3px',
-    borderBottom: '1px solid #eee'
+    marginBottom: '5px',
+    paddingBottom: '5px',
+    borderBottom: '1px solid #eee',
+    display: 'flex',
+    alignItems: 'flex-start'
   },
   smallBtn: {
-    padding: '5px 10px',
+    padding: '5px 12px',
     color: 'white',
     border: 'none',
-    borderRadius: '3px',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '12px',
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      opacity: 0.9
+    }
   },
   progressContainer: {
     marginBottom: '30px'
@@ -610,12 +741,14 @@ const styles = {
   progressFill: {
     height: '100%',
     backgroundColor: '#007bff',
-    transition: 'width 0.3s ease'
+    transition: 'width 0.3s ease',
+    borderRadius: '4px'
   },
   progressSteps: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: '500'
   },
   step: {
     color: '#adb5bd'
@@ -628,7 +761,7 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '10px',
     padding: '30px',
-    boxShadow: '0 2px 15px rgba(0,0,0,0.1)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
     marginBottom: '40px'
   },
   stepContainer: {
@@ -658,6 +791,7 @@ const styles = {
     textAlign: 'center',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
+    boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
     '&:hover': {
       transform: 'translateY(-3px)',
       boxShadow: '0 5px 15px rgba(0,0,0,0.1)'
@@ -670,39 +804,42 @@ const styles = {
   categoryName: {
     margin: '0 0 5px 0',
     fontSize: '16px',
-    color: '#333'
+    color: '#333',
+    fontWeight: '600'
   },
   categoryDesc: {
     fontSize: '11px',
     color: '#666',
-    margin: 0
+    margin: 0,
+    lineHeight: '1.4'
   },
   formGroup: {
-    marginBottom: '20px'
+    marginBottom: '25px'
   },
   formGroupHalf: {
     flex: 1
   },
   formRow: {
     display: 'flex',
-    gap: '15px',
-    marginBottom: '20px'
+    gap: '20px',
+    marginBottom: '25px'
   },
   label: {
-    display: 'block',
     marginBottom: '8px',
     fontWeight: '600',
     color: '#495057',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    fontSize: '15px'
   },
   input: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
+    transition: 'all 0.2s ease',
     '&:focus': {
       outline: 'none',
       borderColor: '#80bdff',
@@ -711,13 +848,15 @@ const styles = {
   },
   textarea: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
-    fontFamily: 'Arial, sans-serif',
+    fontFamily: 'inherit',
     resize: 'vertical',
-    minHeight: '100px',
+    minHeight: '120px',
+    lineHeight: '1.5',
+    transition: 'all 0.2s ease',
     '&:focus': {
       outline: 'none',
       borderColor: '#80bdff',
@@ -726,14 +865,17 @@ const styles = {
   },
   select: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
     backgroundColor: 'white',
+    transition: 'all 0.2s ease',
+    cursor: 'pointer',
     '&:focus': {
       outline: 'none',
-      borderColor: '#80bdff'
+      borderColor: '#80bdff',
+      boxShadow: '0 0 0 0.2rem rgba(0,123,255,.25)'
     }
   },
   buttonGroup: {
@@ -742,74 +884,93 @@ const styles = {
     marginTop: '30px'
   },
   prevBtn: {
-    padding: '12px 25px',
+    padding: '14px 30px',
     backgroundColor: '#6c757d',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#5a6268'
+    }
   },
   nextBtn: {
-    padding: '12px 25px',
+    padding: '14px 30px',
     backgroundColor: '#007bff',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#0056b3'
+    }
   },
   submitBtn: {
-    padding: '15px 40px',
+    padding: '16px 45px',
     backgroundColor: '#28a745',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '18px',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: '0 auto',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 6px rgba(40,167,69,0.3)',
     '&:hover:not(:disabled)': {
-      backgroundColor: '#218838'
+      backgroundColor: '#218838',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 6px 8px rgba(40,167,69,0.4)'
     },
     '&:disabled': {
       backgroundColor: '#6c757d',
-      cursor: 'not-allowed'
+      cursor: 'not-allowed',
+      transform: 'none',
+      boxShadow: 'none'
     }
   },
   summaryBox: {
-    backgroundColor: '#e9ecef',
+    backgroundColor: '#f8f9fa',
     padding: '20px',
     borderRadius: '8px',
-    marginBottom: '25px'
+    marginBottom: '25px',
+    borderLeft: '4px solid #007bff'
   },
   summaryTitle: {
     marginTop: 0,
     marginBottom: '15px',
-    color: '#495057'
+    color: '#495057',
+    fontSize: '18px'
   },
   summaryItem: {
-    marginBottom: '8px',
-    color: '#6c757d'
+    marginBottom: '10px',
+    color: '#6c757d',
+    lineHeight: '1.5'
   }
 };
 
-// Add spin animation
-const styleTag = document.createElement('style');
-styleTag.innerHTML = `
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+// Add spin animation globally
+if (typeof document !== 'undefined') {
+  const styleTag = document.createElement('style');
+  styleTag.innerHTML = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spin {
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+  `;
+  document.head.appendChild(styleTag);
 }
-.spin {
-  animation: spin 1s linear infinite;
-}
-`;
-document.head.appendChild(styleTag);
 
 export default PostRequest;

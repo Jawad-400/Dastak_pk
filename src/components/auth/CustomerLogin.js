@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FaPhone, FaLock, FaUser, FaMapMarkerAlt, FaEnvelope, FaIdCard } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
+import { socket } from '../../Services/socket';
 
 const CITIES = [
   'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad',
@@ -126,10 +127,22 @@ const CustomerLogin = () => {
         phone: formData.phone.replace(/\D/g, ''),
         email: formData.email,
         city: formData.city,
-        cnic: formData.cnic
+        cnic: formData.cnic,
+        id: 'user_' + Date.now().toString(), // Generate user ID
+        role: 'customer' // Set role
       };
       
       localStorage.setItem('dastak_user', JSON.stringify(userData));
+      
+      // ========== ADD THIS: Update WebSocket authentication ==========
+      if (socket && socket.updateAuth) {
+        socket.updateAuth({
+          ...userData,
+          token: 'user-token-' + Date.now() // Add a token
+        });
+        console.log('✅ WebSocket authentication updated for customer');
+      }
+      // ========== END OF ADDED CODE ==========
       
       setSuccessMessage(isLogin ? 'Logged in successfully!' : 'Account created successfully!');
       

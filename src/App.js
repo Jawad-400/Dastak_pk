@@ -25,11 +25,11 @@ import CustomerLogin from './components/auth/CustomerLogin';
 import ProviderPortal from './components/ProviderPortal';
 import ProviderDashboard from './components/ProviderDashboard';
 import ProviderJobsFeed from './components/provider/ProviderJobsFeed';
-import PlaceorderModal from './components/provider/PlaceorderModal';
+import PlaceorderModal from './components/PostRequest';
 import MyOrders from './components/provider/MyOrders';
 
 // WebSocket Components
-import FindJobs from './components/WebSocket/FindJobs';
+import FindJobs from './components/provider/ProviderJobsFeed';
 
 import './styles.css';
 
@@ -84,10 +84,10 @@ function AppContent() {
       <Routes>
         {/* Home & Main Routes */}
         <Route path="/" element={<HomePage />} />
-        <Route path="/services" element={<ServicePage />} />
+        <Route path="/services" element={<FindJobs />} />
         <Route path="/post-request" element={<PostRequest />} />
         <Route path="/customer-login" element={<CustomerLoginPage />} />
-        <Route path="/customer-portal" element={<CustomerOrderTracking />} />
+        <Route path="/customer-portal" element={<PostRequest />} />
         
         {/* Provider Routes */}
         <Route path="/provider-portal" element={<ProviderPortalPage />} />

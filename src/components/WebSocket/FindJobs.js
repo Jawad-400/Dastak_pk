@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   FaTools, FaMapMarkerAlt, FaCalendarAlt, 
-  FaRupeeSign, FaPhone, FaClipboard, FaArrowLeft,
-  FaCheckCircle, FaClock, FaUser, FaBullhorn,
+  FaPhone, FaArrowLeft,
+  FaCheckCircle, FaUser, FaBullhorn,
   FaSpinner, FaExclamationTriangle,
-  FaPen,
-  FaMoneyBill
+  FaPen, FaMoneyBill
 } from 'react-icons/fa';
-import { socket } from '../Services/socket';
+import { socket } from './services/socket';  // Now using our GoWebSocket
 
 const FindJobs = () => {
   const navigate = useNavigate();
@@ -18,6 +17,7 @@ const FindJobs = () => {
   const [success, setSuccess] = useState(false);
   const [requestId, setRequestId] = useState('');
   const [debugLogs, setDebugLogs] = useState([]);
+  const [socketConnected, setSocketConnected] = useState(false);
   const [formData, setFormData] = useState({
     serviceType: '',
     description: '',
@@ -29,40 +29,79 @@ const FindJobs = () => {
   });
 
   const serviceCategories = [
-    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage, Kit, Kitchen Drainage Issues, Other...' },
-    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Board Issues, Light Breakage, Other...' },
-    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing, Gas Filling, AC Not Working, Cooling Issues, Other ... ' },
-    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing, Polishing, New, Other ...' },
-    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling, Wall Papers, Other ...' },
-    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning, Garden Cleaning, Dusting, Other ...' },
-    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine, Fridge, AC, LCD, Oven, Heater, Stove, Other ...' },
-    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite, Cockroach, Mosquito, Sprays, Other ...' },
+    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets' },
+    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches' },
+    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing' },
+    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors' },
+    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting' },
+    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home Cleaning' },
+    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine' },
+    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite Control' },
   ];
 
-  // Add debug log
+  // Debug logging
   const addDebug = (msg) => {
-    console.log('🔧', msg);
-    setDebugLogs(prev => [...prev.slice(-9), {
-      time: new Date().toLocaleTimeString(),
-      msg
-    }]);
+    console.log('🔧 [FindJobs]:', msg);
+    setDebugLogs(prev => {
+      const newLogs = [...prev, {
+        time: new Date().toLocaleTimeString(),
+        msg
+      }];
+      return newLogs.slice(-10);
+    });
   };
 
-  // Connect WebSocket
+  // WebSocket setup - UPDATED FOR GO WEBSOCKET
   useEffect(() => {
-    addDebug('Component mounted, connecting WebSocket...');
+    addDebug('Component mounted, initializing WebSocket...');
+
+    socket.updateQueryParams({
+      type: 'customer',
+      user_id: formData.customerName || 'anonymous_customer',
+      name: formData.customerName || 'Customer',
+      service: '' // Customers don't have service
+    });
+    
+    // Listen for connection events
+    const handleConnected = (e) => {
+      addDebug(`✅ WebSocket connected to: ${e.detail.url}`);
+      setSocketConnected(true);
+    };
+    
+    const handleDisconnected = (e) => {
+      addDebug(`❌ WebSocket disconnected: ${e.detail.reason || 'Unknown reason'}`);
+      setSocketConnected(false);
+    };
+    
+    // Listen for custom events from our GoWebSocket
+    window.addEventListener('socket-connected', handleConnected);
+    window.addEventListener('socket-disconnected', handleDisconnected);
+    
+    // Also listen for specific WebSocket events
+    window.addEventListener('ws-request_created', (e) => {
+      addDebug(`✅ Server confirmed request: ${JSON.stringify(e.detail)}`);
+      setSuccess(true);
+    });
+    
+    window.addEventListener('ws-welcome', (e) => {
+      addDebug(`👋 Server welcome: ${JSON.stringify(e.detail)}`);
+    });
+    
+    // Connect to WebSocket
     socket.connect();
     
-    // Listen for WebSocket events
-    const onConnect = () => addDebug('✅ WebSocket connected');
-    const onDisconnect = () => addDebug('❌ WebSocket disconnected');
+    // Check initial connection
+    if (socket.isConnected()) {
+      setSocketConnected(true);
+      addDebug('✅ Socket already connected');
+    }
     
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-    
+    // Cleanup
     return () => {
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
+      window.removeEventListener('socket-connected', handleConnected);
+      window.removeEventListener('socket-disconnected', handleDisconnected);
+      window.removeEventListener('ws-request_created', () => {});
+      window.removeEventListener('ws-welcome', () => {});
     };
   }, []);
 
@@ -70,7 +109,7 @@ const FindJobs = () => {
     e.preventDefault();
     addDebug('=== FORM SUBMIT STARTED ===');
     
-    // 1. Validate
+    // Validation
     if (!formData.serviceType || !formData.description || !formData.location || !formData.customerName || !formData.contactNumber) {
       setError('Please fill all required fields (*)');
       addDebug('Validation failed: Missing fields');
@@ -80,65 +119,73 @@ const FindJobs = () => {
     setError('');
     setLoading(true);
     
-    // 2. Prepare data
+    // Generate request ID
+    const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    setRequestId(newRequestId);
+    
+    // Prepare data for Go server
     const requestData = {
+      id: newRequestId,
       title: formData.serviceType,
       description: formData.description,
       location: formData.location,
-      schedule: formData.schedule,
       budget: formData.budget || 'Negotiable',
-      contact_number: formData.contactNumber,
+      customer_id: `cust_${formData.customerName.replace(/\s+/g, '_')}`,
       customer_name: formData.customerName,
       service_type: formData.serviceType.toLowerCase().replace(/\s+/g, '_'),
+      schedule: formData.schedule,
+      contact_number: formData.contactNumber,
       timestamp: Date.now()
     };
     
-    addDebug(`Form data: ${JSON.stringify(requestData)}`);
-    addDebug(`WebSocket connected: ${socket.connected}`); // FIXED: changed from isConnected() to connected
+    addDebug(`Prepared data: ${JSON.stringify(requestData)}`);
+    addDebug(`Socket connected: ${socketConnected}`);
     
     try {
-      // 3. Send via WebSocket
-      addDebug('Sending via WebSocket...');
-      
-      // Create unique request ID
-      const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-      setRequestId(newRequestId);
-      
-      // Send the request - FIXED: changed from send to emit
-      socket.emit('create_request', { // FIXED: changed from socket.send to socket.emit
-        id: newRequestId,
-        data: requestData
-      });
-      
-      addDebug(`✅ Request sent! ID: ${newRequestId}`);
-      
-      // 4. Show success
-      setSuccess(true);
-      
-      // 5. Clear form after 3 seconds
-      setTimeout(() => {
-        setFormData({
-          serviceType: '',
-          description: '',
-          location: '',
-          schedule: 'asap',
-          budget: '',
-          contactNumber: '',
-          customerName: '',
-        });
-        setStep(1);
-        setSuccess(false);
-      }, 3000);
-      
+      // Send via WebSocket
+      if (socketConnected && socket.isConnected()) {
+        const sent = socket.send('create_request', requestData);
+        
+        if (sent) {
+          addDebug(`✅ Request sent via WebSocket: ${newRequestId}`);
+          
+          // Show success
+          setSuccess(true);
+          setLoading(false);
+          
+          // Clear form after delay
+          setTimeout(() => {
+            setFormData({
+              serviceType: '',
+              description: '',
+              location: '',
+              schedule: 'ASAP',
+              budget: '',
+              contactNumber: '',
+              customerName: '',
+            });
+            setStep(1);
+            setSuccess(false);
+            addDebug('Form reset');
+          }, 3000);
+        } else {
+          addDebug('❌ Failed to send request');
+          setError('Failed to send request. Please check connection.');
+          setLoading(false);
+        }
+      } else {
+        addDebug('❌ Socket not connected');
+        setError('Connection lost. Please reconnect and try again.');
+        setLoading(false);
+      }
     } catch (err) {
       addDebug(`❌ Error: ${err.message}`);
-      setError('Failed to post request. Please try again.');
-    } finally {
+      setError('Failed to post request');
       setLoading(false);
-      addDebug('=== FORM SUBMIT COMPLETED ===');
     }
   };
 
+  // Navigation functions
   const handleNext = () => {
     setError('');
     if (step === 1 && (!formData.serviceType || !formData.description)) {
@@ -157,41 +204,69 @@ const FindJobs = () => {
     if (step > 1) setStep(step - 1);
   };
 
-  // Test WebSocket manually
-  const testWebSocket = () => {
-    const testId = `test_${Date.now()}`;
-    addDebug(`Testing WebSocket with ID: ${testId}`);
-    
-    // FIXED: changed from socket.send to socket.emit
-    socket.emit('create_request', {
-      id: testId,
-      data: {
-        title: 'TEST Plumbing Service',
-        description: 'This is a test request',
-        location: 'Test Street, Lahore',
-        amount: 1000,
-        customer: 'Test User',
-        schedule: 'ASAP',
-        timestamp: Date.now()
-      }
-    });
-    
-    alert(`Test request sent! Check console. ID: ${testId}`);
-  };
-
   // Quick test button
   const quickTest = () => {
     setFormData({
       serviceType: 'Plumbing',
-      description: 'Fix leaking kitchen sink pipe',
-      location: 'Gulberg, Lahore',
+      description: 'Fix leaking kitchen sink pipe. The pipe under the sink is leaking and needs replacement.',
+      location: 'Gulberg, Lahore - House No. 123, Street 5',
       schedule: 'today',
-      budget: '2000',
+      budget: '2000 PKR',
       contactNumber: '+92 300 1234567',
       customerName: 'Test Customer',
     });
     setStep(3);
     addDebug('Form filled with test data');
+    setError('');
+  };
+
+  // Manual connect button
+  const manualConnect = () => {
+    addDebug('Manually connecting WebSocket...');
+    
+    if (socket.isConnected()) {
+      socket.disconnect();
+      addDebug('Disconnected existing connection');
+    }
+    
+    socket.connect();
+    
+    // Check connection status after 2 seconds
+    setTimeout(() => {
+      if (socket.isConnected()) {
+        setSocketConnected(true);
+        addDebug('✅ Manual connect successful');
+      } else {
+        setSocketConnected(false);
+        addDebug('❌ Manual connect failed');
+      }
+    }, 2000);
+  };
+
+  // Test WebSocket manually
+  const testWebSocket = () => {
+    const testData = {
+      id: `test_${Date.now()}`,
+      title: 'TEST Plumbing',
+      description: 'Test request',
+      location: 'Test Location',
+      budget: '1000 PKR',
+      customer_id: 'test_customer',
+      customer_name: 'Test User',
+      service_type: 'plumbing',
+      schedule: 'ASAP',
+      contact_number: '+92 300 0000000',
+      timestamp: Date.now()
+    };
+    
+    if (socket.isConnected()) {
+      socket.send('create_request', testData);
+      addDebug('Test request sent');
+      alert('Test request sent! Check console.');
+    } else {
+      addDebug('Socket not connected');
+      alert('Socket not connected');
+    }
   };
 
   return (
@@ -212,25 +287,25 @@ const FindJobs = () => {
         <p style={styles.subtitle}>Describe your service need and get Orders from local providers</p>
       </div>
 
-      {/* Connection Status - FIXED: changed from socket.isConnected() to socket.connected */}
+      {/* Connection Status */}
       <div style={{
         ...styles.connectionStatus,
-        backgroundColor: socket.connected ? '#d4edda' : '#f8d7da',
-        color: socket.connected ? '#155724' : '#721c24',
-        border: socket.connected ? '2px solid #28a745' : '2px solid #dc3545'
+        backgroundColor: socketConnected ? '#d4edda' : '#f8d7da',
+        color: socketConnected ? '#155724' : '#721c24',
+        border: socketConnected ? '2px solid #28a745' : '2px solid #dc3545'
       }}>
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
-          {socket.connected ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
+          {socketConnected ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
           <button 
-            onClick={() => socket.connect()} 
-            style={{padding: '3px 10px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
+            onClick={manualConnect}
+            style={{padding: '5px 12px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
           >
-            Reconnect
+            Connect
           </button>
         </div>
         <small style={{display: 'block', marginTop: '5px'}}>
-          {socket.connected 
-            ? 'Providers will see your request instantly' 
+          {socketConnected 
+            ? 'Connected to Go WebSocket server' 
             : 'Connect to WebSocket server for live updates'}
         </small>
       </div>
@@ -240,11 +315,13 @@ const FindJobs = () => {
         <div style={styles.successBox}>
           <FaCheckCircle style={{fontSize: '50px', color: '#28a745', marginBottom: '15px'}} />
           <h2>Request Posted Successfully!</h2>
-          <p>Request ID: <strong>{requestId}</strong></p>
+          <p>Request ID: <strong style={{backgroundColor: '#e9ecef', padding: '5px 10px', borderRadius: '4px'}}>{requestId}</strong></p>
           <p>Providers are now being notified about your request.</p>
-          <p style={{fontSize: '12px', color: '#666', marginTop: '15px'}}>
-            This page will reset in 3 seconds...
-          </p>
+          <div style={{marginTop: '20px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px'}}>
+            <span style={{fontSize: '12px', color: '#666'}}>
+              This page will reset in 3 seconds...
+            </span>
+          </div>
         </div>
       )}
 
@@ -259,7 +336,7 @@ const FindJobs = () => {
       {/* Debug Panel */}
       <div style={styles.debugPanel}>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-          <strong>WebSocket Debug</strong>
+          <strong>Debug Console</strong>
           <div>
             <button 
               onClick={testWebSocket}
@@ -277,11 +354,12 @@ const FindJobs = () => {
         </div>
         <div style={styles.logsBox}>
           {debugLogs.length === 0 ? (
-            <div style={{color: '#999', fontStyle: 'italic'}}>No debug logs yet. Submit form to see logs.</div>
+            <div style={{color: '#999', fontStyle: 'italic'}}>No debug logs yet.</div>
           ) : (
             debugLogs.map((log, idx) => (
               <div key={idx} style={styles.logLine}>
-                <span style={{color: '#666'}}>[{log.time}]</span> {log.msg}
+                <span style={{color: '#666', fontFamily: 'monospace', fontSize: '11px'}}>[{log.time}]</span>
+                <span style={{marginLeft: '10px', fontFamily: 'monospace', fontSize: '12px'}}>{log.msg}</span>
               </div>
             ))
           )}
@@ -338,7 +416,7 @@ const FindJobs = () => {
                   </label>
                   <textarea
                     style={styles.textarea}
-                    placeholder="Describe what you need in detail..."
+                    placeholder="Describe what you need in detail. Be specific about the problem..."
                     rows="6"
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
@@ -368,7 +446,7 @@ const FindJobs = () => {
                   <input
                     type="text"
                     style={styles.input}
-                    placeholder="Enter complete address"
+                    placeholder="Enter complete address with street, area, city"
                     value={formData.location}
                     onChange={(e) => setFormData({...formData, location: e.target.value})}
                     required
@@ -386,7 +464,7 @@ const FindJobs = () => {
                       onChange={(e) => setFormData({...formData, schedule: e.target.value})}
                       required
                     >
-                      <option value="asap">As soon as possible</option>
+                      <option value="ASAP">As soon as possible</option>
                       <option value="today">Today</option>
                       <option value="tomorrow">Tomorrow</option>
                       <option value="this-week">This Week</option>
@@ -397,12 +475,12 @@ const FindJobs = () => {
 
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaMoneyBill /> Budget *
+                      <FaMoneyBill /> Budget
                     </label>
                     <input
                       type="text"
                       style={styles.input}
-                      placeholder="e.g., 2,000 PKR"
+                      placeholder="e.g., 2,000 PKR (Optional)"
                       value={formData.budget}
                       onChange={(e) => setFormData({...formData, budget: e.target.value})}
                     />
@@ -424,7 +502,7 @@ const FindJobs = () => {
             {step === 3 && (
               <div style={styles.stepContainer}>
                 <h2 style={styles.stepTitle}>
-                  <FaUser style={styles.stepIcon} /> Contact Information:
+                  <FaUser style={styles.stepIcon} /> Contact Information
                 </h2>
 
                 <div style={styles.formRow}>
@@ -464,13 +542,24 @@ const FindJobs = () => {
                     <strong>Service:</strong> {formData.serviceType}
                   </div>
                   <div style={styles.summaryItem}>
+                    <strong>Description:</strong> {formData.description.substring(0, 50)}...
+                  </div>
+                  <div style={styles.summaryItem}>
                     <strong>Location:</strong> {formData.location}
                   </div>
                   <div style={styles.summaryItem}>
-                    <strong>Schedule:</strong> {formData.schedule === 'asap' ? 'ASAP' : formData.schedule}
+                    <strong>Schedule:</strong> {formData.schedule}
                   </div>
                   <div style={styles.summaryItem}>
                     <strong>Budget:</strong> {formData.budget || 'Negotiable'}
+                  </div>
+                </div>
+
+                <div style={{textAlign: 'center', margin: '20px 0'}}>
+                  <div style={{fontSize: '14px', color: '#666', marginBottom: '10px'}}>
+                    {socketConnected 
+                      ? '✅ Your request will be sent to providers instantly' 
+                      : '⚠️ WebSocket offline - request will be saved locally'}
                   </div>
                 </div>
 
@@ -511,7 +600,7 @@ const styles = {
     maxWidth: '1200px',
     margin: '0 auto',
     padding: '20px',
-    fontFamily: 'Arial, sans-serif'
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
   },
   backButton: {
     marginBottom: '20px',
@@ -528,14 +617,19 @@ const styles = {
     border: 'none',
     borderRadius: '5px',
     cursor: 'pointer',
-    fontSize: '16px'
+    fontSize: '16px',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#5a6268'
+    }
   },
   connectionStatus: {
     padding: '15px',
     borderRadius: '8px',
     marginBottom: '20px',
     textAlign: 'center',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
   },
   header: {
     textAlign: 'center',
@@ -544,11 +638,14 @@ const styles = {
   title: {
     fontSize: '36px',
     color: '#333',
-    marginBottom: '10px'
+    marginBottom: '10px',
+    fontWeight: '700'
   },
   subtitle: {
     fontSize: '18px',
-    color: '#666'
+    color: '#666',
+    maxWidth: '600px',
+    margin: '0 auto'
   },
   successBox: {
     backgroundColor: '#d4edda',
@@ -557,7 +654,8 @@ const styles = {
     borderRadius: '10px',
     textAlign: 'center',
     marginBottom: '30px',
-    border: '2px solid #c3e6cb'
+    border: '2px solid #c3e6cb',
+    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
   },
   errorBox: {
     backgroundColor: '#f8d7da',
@@ -566,14 +664,16 @@ const styles = {
     borderRadius: '5px',
     marginBottom: '20px',
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderLeft: '4px solid #dc3545'
   },
   debugPanel: {
     backgroundColor: '#f8f9fa',
     border: '1px solid #dee2e6',
     borderRadius: '8px',
     padding: '15px',
-    marginBottom: '20px'
+    marginBottom: '20px',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
   },
   logsBox: {
     maxHeight: '150px',
@@ -582,20 +682,28 @@ const styles = {
     padding: '10px',
     borderRadius: '5px',
     fontSize: '12px',
-    fontFamily: 'monospace'
+    fontFamily: 'monospace',
+    border: '1px solid #e9ecef'
   },
   logLine: {
-    marginBottom: '3px',
-    paddingBottom: '3px',
-    borderBottom: '1px solid #eee'
+    marginBottom: '5px',
+    paddingBottom: '5px',
+    borderBottom: '1px solid #eee',
+    display: 'flex',
+    alignItems: 'flex-start'
   },
   smallBtn: {
-    padding: '5px 10px',
+    padding: '5px 12px',
     color: 'white',
     border: 'none',
-    borderRadius: '3px',
+    borderRadius: '4px',
     cursor: 'pointer',
-    fontSize: '12px'
+    fontSize: '12px',
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      opacity: 0.9
+    }
   },
   progressContainer: {
     marginBottom: '30px'
@@ -610,12 +718,14 @@ const styles = {
   progressFill: {
     height: '100%',
     backgroundColor: '#007bff',
-    transition: 'width 0.3s ease'
+    transition: 'width 0.3s ease',
+    borderRadius: '4px'
   },
   progressSteps: {
     display: 'flex',
     justifyContent: 'space-between',
-    fontSize: '14px'
+    fontSize: '14px',
+    fontWeight: '500'
   },
   step: {
     color: '#adb5bd'
@@ -628,7 +738,7 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '10px',
     padding: '30px',
-    boxShadow: '0 2px 15px rgba(0,0,0,0.1)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
     marginBottom: '40px'
   },
   stepContainer: {
@@ -658,6 +768,7 @@ const styles = {
     textAlign: 'center',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
+    boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
     '&:hover': {
       transform: 'translateY(-3px)',
       boxShadow: '0 5px 15px rgba(0,0,0,0.1)'
@@ -670,39 +781,42 @@ const styles = {
   categoryName: {
     margin: '0 0 5px 0',
     fontSize: '16px',
-    color: '#333'
+    color: '#333',
+    fontWeight: '600'
   },
   categoryDesc: {
     fontSize: '11px',
     color: '#666',
-    margin: 0
+    margin: 0,
+    lineHeight: '1.4'
   },
   formGroup: {
-    marginBottom: '20px'
+    marginBottom: '25px'
   },
   formGroupHalf: {
     flex: 1
   },
   formRow: {
     display: 'flex',
-    gap: '15px',
-    marginBottom: '20px'
+    gap: '20px',
+    marginBottom: '25px'
   },
   label: {
-    display: 'block',
     marginBottom: '8px',
     fontWeight: '600',
     color: '#495057',
     display: 'flex',
     alignItems: 'center',
-    gap: '8px'
+    gap: '8px',
+    fontSize: '15px'
   },
   input: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
+    transition: 'all 0.2s ease',
     '&:focus': {
       outline: 'none',
       borderColor: '#80bdff',
@@ -711,13 +825,15 @@ const styles = {
   },
   textarea: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
-    fontFamily: 'Arial, sans-serif',
+    fontFamily: 'inherit',
     resize: 'vertical',
-    minHeight: '100px',
+    minHeight: '120px',
+    lineHeight: '1.5',
+    transition: 'all 0.2s ease',
     '&:focus': {
       outline: 'none',
       borderColor: '#80bdff',
@@ -726,14 +842,17 @@ const styles = {
   },
   select: {
     width: '100%',
-    padding: '12px',
+    padding: '14px',
     border: '1px solid #ced4da',
-    borderRadius: '5px',
+    borderRadius: '6px',
     fontSize: '16px',
     backgroundColor: 'white',
+    transition: 'all 0.2s ease',
+    cursor: 'pointer',
     '&:focus': {
       outline: 'none',
-      borderColor: '#80bdff'
+      borderColor: '#80bdff',
+      boxShadow: '0 0 0 0.2rem rgba(0,123,255,.25)'
     }
   },
   buttonGroup: {
@@ -742,74 +861,93 @@ const styles = {
     marginTop: '30px'
   },
   prevBtn: {
-    padding: '12px 25px',
+    padding: '14px 30px',
     backgroundColor: '#6c757d',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#5a6268'
+    }
   },
   nextBtn: {
-    padding: '12px 25px',
+    padding: '14px 30px',
     backgroundColor: '#007bff',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '16px',
-    fontWeight: 'bold'
+    fontWeight: 'bold',
+    transition: 'all 0.2s ease',
+    '&:hover': {
+      backgroundColor: '#0056b3'
+    }
   },
   submitBtn: {
-    padding: '15px 40px',
+    padding: '16px 45px',
     backgroundColor: '#28a745',
     color: 'white',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: '6px',
     cursor: 'pointer',
     fontSize: '18px',
     fontWeight: 'bold',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    margin: '0 auto',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 6px rgba(40,167,69,0.3)',
     '&:hover:not(:disabled)': {
-      backgroundColor: '#218838'
+      backgroundColor: '#218838',
+      transform: 'translateY(-2px)',
+      boxShadow: '0 6px 8px rgba(40,167,69,0.4)'
     },
     '&:disabled': {
       backgroundColor: '#6c757d',
-      cursor: 'not-allowed'
+      cursor: 'not-allowed',
+      transform: 'none',
+      boxShadow: 'none'
     }
   },
   summaryBox: {
-    backgroundColor: '#e9ecef',
+    backgroundColor: '#f8f9fa',
     padding: '20px',
     borderRadius: '8px',
-    marginBottom: '25px'
+    marginBottom: '25px',
+    borderLeft: '4px solid #007bff'
   },
   summaryTitle: {
     marginTop: 0,
     marginBottom: '15px',
-    color: '#495057'
+    color: '#495057',
+    fontSize: '18px'
   },
   summaryItem: {
-    marginBottom: '8px',
-    color: '#6c757d'
+    marginBottom: '10px',
+    color: '#6c757d',
+    lineHeight: '1.5'
   }
 };
 
-// Add spin animation
-const styleTag = document.createElement('style');
-styleTag.innerHTML = `
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+// Add spin animation globally
+if (typeof document !== 'undefined') {
+  const styleTag = document.createElement('style');
+  styleTag.innerHTML = `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spin {
+      animation: spin 1s linear infinite;
+      display: inline-block;
+    }
+  `;
+  document.head.appendChild(styleTag);
 }
-.spin {
-  animation: spin 1s linear infinite;
-}
-`;
-document.head.appendChild(styleTag);
 
 export default FindJobs;
