@@ -8,7 +8,7 @@ const ServicesCategories = () => {
     { id: 3, name: 'Car Service', icon: '🚗', color: '#2ecc71' },
     { id: 4, name: 'Bike Service', icon: '🏍️', color: '#9b59b6' },
     { id: 5, name: 'AC Repair', icon: '❄️', color: '#1abc9c' },
-    { id: 6, name: 'Electrician', icon: '⚡', color: '#f1c40f' },
+    { id: 6, name: 'electrical', icon: '⚡', color: '#f1c40f' },
     { id: 7, name: 'Carpenter', icon: '🪚', color: '#e67e22' },
     { id: 8, name: 'Cleaning', icon: '🧹', color: '#95a5a6' },
     { id: 9, name: 'Mason', icon: '🧱', color: '#34495e' },

@@ -28,7 +28,7 @@ const CustomerPortalMap = () => {
     setWorkers([
       { id: 'w1', name: 'Ahmed', service: 'Plumber', lat: 24.867, lng: 67.001, rating: 4.7 },
       { id: 'w2', name: 'Sara', service: 'AC Technician', lat: 24.863, lng: 67.010, rating: 4.8 },
-      { id: 'w3', name: 'Bilal', service: 'Electrician', lat: 24.857, lng: 67.005, rating: 4.6 }
+      { id: 'w3', name: 'Bilal', service: 'Electrical', lat: 24.857, lng: 67.005, rating: 4.6 }
     ]);
 
     // Rehydrate orders from localStorage

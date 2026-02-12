@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import '../styles.css';
 import { 
   FaBell, FaWallet, FaStar, FaMapMarkerAlt, FaCalendarAlt, 
   FaUser, FaCheckCircle, FaSearch, FaExclamationCircle
-} from 'react-icons/fa'; // Removed FaSpinner
+} from 'react-icons/fa';
 import { Link } from 'react-router-dom';
-import { socket } from '../Services/socket'; // Now using our GoWebSocket
+import { socket } from '../Services/socket';
 
 const ProviderDashboard = () => {
   const [connected, setConnected] = useState(false);
@@ -14,39 +14,89 @@ const ProviderDashboard = () => {
   const [acceptedJobs, setAcceptedJobs] = useState([]);
   const [activeRequests, setActiveRequests] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(68500);
-  const [providerInfo] = useState({
-    id: 'provider_001',
-    name: 'John Doe',
-    service: 'plumber',
-    serviceType: 'plumbing',
-    phone: '+923001234567'
+  
+  // Get provider info from localStorage
+  const [providerInfo, setProviderInfo] = useState({
+    id: '',
+    name: '',
+    service: '',
+    serviceType: '',
+    phone: ''
   });
 
-  // Mock static data
-  const staticRequests = [
-    { id: 1, service: 'Plumbing', customer: 'Ahmed Raza', location: 'Gulshan', budget: '₹2,500', time: '2 hours ago' },
-    { id: 2, service: 'AC Repair', customer: 'Sara Khan', location: 'DHA', budget: '₹3,000', time: '5 hours ago' },
-  ];
+  const hasConnected = useRef(false);
+  const socketInitialized = useRef(false);
 
-  // WebSocket setup - UPDATED FOR NATIVE WEBSOCKET
+  // Load provider info from localStorage on mount
   useEffect(() => {
-    console.log('🚀 ProviderDashboard mounting...');
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    const providerService = localStorage.getItem('provider_service');
     
-    // Listen for connection events
-    const handleConnected = (e) => {
-      console.log('✅ Provider WebSocket connected');
-      setConnected(true);
-      setConnectionStatus('LIVE CONNECTED');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        setProviderInfo({
+          id: user.id || '',
+          name: user.name || '',
+          service: providerService || user.service || 'plumbing',
+          serviceType: providerService || user.service || 'plumbing',
+          phone: user.phone || ''
+        });
+        console.log('✅ Provider info loaded:', user.name, 'Service:', providerService || user.service);
+      } catch (e) {
+        console.error('Error parsing stored user:', e);
+      }
+    }
+  }, []);
+
+  // WebSocket setup with correct service type
+  useEffect(() => {
+    console.log('🚀 ProviderDashboard MOUNTED with service:', providerInfo.serviceType);
+    
+    const token = localStorage.getItem('token');
+    
+    if (!token || !providerInfo.id) {
+      console.log('❌ No token or provider info, waiting...');
+      return;
+    }
+
+    if (!socketInitialized.current) {
+      socketInitialized.current = true;
       
-      // Update query params for provider
+      console.log('🔌 Initializing WebSocket for provider:', providerInfo.name, providerInfo.serviceType);
+      
+      // Update query params with CORRECT service
       socket.updateQueryParams({
         type: 'provider',
         user_id: providerInfo.id,
         name: providerInfo.name,
         service: providerInfo.serviceType
       });
+
+      // Update auth
+      socket.updateAuth({
+        id: providerInfo.id,
+        name: providerInfo.name,
+        user_type: 'provider',
+        token: token,
+        service: providerInfo.serviceType
+      });
+
+      // Connect if not already connected
+      if (!socket.isConnected() && !hasConnected.current) {
+        hasConnected.current = true;
+        setTimeout(() => socket.connect(), 500);
+      }
+    }
+
+    // ============ EVENT HANDLERS ============
+    const handleConnected = () => {
+      console.log('✅ Provider WebSocket connected');
+      setConnected(true);
+      setConnectionStatus('LIVE CONNECTED');
       
-      // Announce provider online
+      // Announce provider online with CORRECT service
       socket.send('provider_online', {
         provider_id: providerInfo.id,
         name: providerInfo.name,
@@ -54,44 +104,79 @@ const ProviderDashboard = () => {
       });
       
       // Request pending requests
-      socket.send('get_pending_requests');
+      setTimeout(() => {
+        socket.send('get_pending_requests');
+      }, 500);
     };
     
-    const handleDisconnected = (e) => {
+    const handleDisconnected = () => {
       console.log('❌ Provider WebSocket disconnected');
       setConnected(false);
       setConnectionStatus('OFFLINE');
+      hasConnected.current = false;
+      socketInitialized.current = false;
     };
     
-    const handleNewRequest = (e) => {
-      const data = e.detail;
-      console.log('🎯 NEW REQUEST from event:', data);
+    const handlePendingRequests = (data) => {
+      console.log('📦 Pending requests received:', data);
+      
+      const requests = data.requests || data.data?.requests || [];
+      
+      if (Array.isArray(requests)) {
+        console.log(`✅ Received ${requests.length} pending requests for ${providerInfo.serviceType}`);
+        
+        const formattedRequests = requests.map(req => ({
+          id: req.id,
+          service: req.title || req.serviceType || req.service_type || 'Service',
+          customer: req.customerName || req.customer || 'Customer',
+          location: req.location || 'Not specified',
+          budget: req.budget || 'Negotiable',
+          time: req.createdAt ? new Date(req.createdAt).toLocaleString() : 'Recently',
+          description: req.description || '',
+          schedule: req.schedule || 'ASAP',
+          contact: req.contact || '',
+          service_type: req.serviceType || req.service_type
+        }));
+        
+        setRealTimeRequests(formattedRequests);
+        setActiveRequests(formattedRequests.length);
+      }
+    };
+    
+    // ✅ FIXED: handleNewRequest - NO MORE UNDEFINED VARIABLE ERRORS!
+    const handleNewRequest = (data) => {
+      console.log('🎯 NEW REQUEST received:', data);
       
       const jobData = data.data || data;
+      console.log('📦 Job data:', jobData);
+      console.log('🔧 Provider service:', providerInfo.serviceType);
+      console.log('🔧 Request service:', jobData.serviceType || jobData.service_type);
       
-      // Check if this provider should see this request
-      if (providerInfo.serviceType && jobData.service_type && 
-          providerInfo.serviceType !== jobData.service_type) {
-        console.log(`Skipping ${jobData.service_type} request (I'm a ${providerInfo.serviceType})`);
+      // Get the request service type
+      const requestService = jobData.serviceType || jobData.service_type;
+      
+      // Only show requests that match provider's service
+      if (requestService && requestService !== providerInfo.serviceType) {
+        console.log(`⏭️ Skipping ${requestService} request (I'm a ${providerInfo.serviceType})`);
         return;
       }
+      
+      console.log(`✅ Accepting ${requestService} request - matches my service!`);
       
       // Create new request object
       const newRequest = {
         id: jobData.id || `job_${Date.now()}`,
         service: jobData.title || jobData.service_type || 'Service',
-        customer: jobData.customer_name || jobData.customer || 'Customer',
+        customer: jobData.customerName || jobData.customer || 'Customer',
         location: jobData.location || 'Not specified',
         budget: jobData.budget || 'Negotiable',
         time: 'Just now',
         description: jobData.description || '',
         schedule: jobData.schedule || 'ASAP',
-        contact: jobData.contact_number || '',
-        service_type: jobData.service_type || '',
-        rawData: jobData
+        contact: jobData.contact || jobData.contact_number || '',
+        service_type: jobData.serviceType || jobData.service_type
       };
 
-      // Add to real-time requests
       setRealTimeRequests(prev => [newRequest, ...prev]);
       setActiveRequests(prev => prev + 1);
       
@@ -106,95 +191,61 @@ const ProviderDashboard = () => {
       }
     };
     
-    const handleRequestAccepted = (e) => {
-      const data = e.detail;
+    const handleRequestAccepted = (data) => {
       console.log('✅ Request accepted:', data);
-      alert(`✅ You accepted job: ${data.request_id}`);
       setActiveRequests(prev => Math.max(0, prev - 1));
     };
     
-    const handleRequestTaken = (e) => {
-      const data = e.detail;
+    const handleRequestTaken = (data) => {
       console.log('⚠️ Request taken:', data);
       setRealTimeRequests(prev => 
-        prev.filter(req => req.id !== data.request_id)
+        prev.filter(req => req.id !== (data.request_id || data.id))
       );
-    };
-    
-    const handleInitialRequests = (e) => {
-      const data = e.detail;
-      console.log('📦 Initial requests:', data);
-      if (Array.isArray(data)) {
-        const formattedRequests = data.map(req => ({
-          id: req.id,
-          service: req.title || req.service_type,
-          customer: req.customer_name || req.customer,
-          location: req.location,
-          budget: req.budget,
-          time: 'Recently',
-          description: req.description,
-          schedule: req.schedule,
-          contact: req.contact_number || '',
-          service_type: req.service_type
-        }));
-        setRealTimeRequests(formattedRequests);
-        setActiveRequests(formattedRequests.length);
-      }
-    };
-    
-    const handleWelcome = (e) => {
-      console.log('👋 Welcome:', e.detail);
+      setActiveRequests(prev => Math.max(0, prev - 1));
     };
 
-    // Register event listeners for custom events
-    window.addEventListener('socket-connected', handleConnected);
-    window.addEventListener('socket-disconnected', handleDisconnected);
-    window.addEventListener('ws-new_request', handleNewRequest);
-    window.addEventListener('ws-request_accepted', handleRequestAccepted);
-    window.addEventListener('ws-request_taken', handleRequestTaken);
-    window.addEventListener('ws-initial_requests', handleInitialRequests);
-    window.addEventListener('ws-welcome', handleWelcome);
+    // Register event listeners
+    socket.on('connected', handleConnected);
+    socket.on('disconnected', handleDisconnected);
+    socket.on('pending_requests', handlePendingRequests);
+    socket.on('new_request', handleNewRequest);
+    socket.on('request_accepted', handleRequestAccepted);
+    socket.on('request_taken', handleRequestTaken);
 
-    // Set provider query params and connect
-    socket.updateQueryParams({
-      type: 'provider',
-      user_id: providerInfo.id,
-      name: providerInfo.name,
-      service: providerInfo.serviceType
-    });
-    
-    // Connect to WebSocket
-    socket.connect();
-    
     // Check initial connection
     if (socket.isConnected()) {
       setConnected(true);
       setConnectionStatus('LIVE CONNECTED');
-      console.log('✅ Socket already connected');
-    } else {
-      setConnectionStatus('CONNECTING...');
+      setTimeout(() => socket.send('get_pending_requests'), 500);
     }
 
     // Cleanup
     return () => {
-      window.removeEventListener('socket-connected', handleConnected);
-      window.removeEventListener('socket-disconnected', handleDisconnected);
-      window.removeEventListener('ws-new_request', handleNewRequest);
-      window.removeEventListener('ws-request_accepted', handleRequestAccepted);
-      window.removeEventListener('ws-request_taken', handleRequestTaken);
-      window.removeEventListener('ws-initial_requests', handleInitialRequests);
-      window.removeEventListener('ws-welcome', handleWelcome);
+      console.log('📊 ProviderDashboard UNMOUNTED');
+      socket.off('connected', handleConnected);
+      socket.off('disconnected', handleDisconnected);
+      socket.off('pending_requests', handlePendingRequests);
+      socket.off('new_request', handleNewRequest);
+      socket.off('request_accepted', handleRequestAccepted);
+      socket.off('request_taken', handleRequestTaken);
     };
-  }, [providerInfo]);
+  }, [providerInfo.id, providerInfo.name, providerInfo.serviceType]);
 
-  // Accept job function - UPDATED
+  // Manual reconnect
+  const reconnectWebSocket = () => {
+    hasConnected.current = false;
+    socketInitialized.current = false;
+    socket.connect();
+  };
+
+  // Accept job
   const acceptJob = (jobId, jobData) => {
     if (!connected || !socket.isConnected()) {
-      alert('⚠️ Please connect first');
+      alert('⚠️ Please wait for connection to establish');
+      reconnectWebSocket();
       return;
     }
 
-    // Update UI
     setRealTimeRequests(prev => prev.filter(req => req.id !== jobId));
     setAcceptedJobs(prev => [...prev, { ...jobData, acceptedAt: new Date() }]);
     setActiveRequests(prev => Math.max(0, prev - 1));
@@ -202,40 +253,44 @@ const ProviderDashboard = () => {
     const budgetValue = parseInt(jobData.budget.replace(/[^0-9]/g, '')) || 0;
     setTotalEarnings(prev => prev + budgetValue);
 
-    // Send acceptance to server
-    socket.send('request_accepted', {
+    socket.send('accept_request', {
       request_id: jobId,
       provider_id: providerInfo.id,
       provider_name: providerInfo.name,
-      provider_service: providerInfo.service,
-      provider_phone: providerInfo.phone,
-      message: 'I will complete this job',
-      timestamp: Date.now()
+      provider_service: providerInfo.serviceType
     });
 
     alert(`✅ Accepted: ${jobData.service} job from ${jobData.customer}`);
   };
 
-  // Reconnect function - UPDATED
-  const reconnectWebSocket = () => {
-    socket.connect();
-  };
-
-  // Refresh requests - UPDATED
+  // Refresh requests
   const refreshRequests = () => {
     if (socket.isConnected()) {
       socket.send('get_pending_requests');
     } else {
-      alert('Please connect to WebSocket first');
+      reconnectWebSocket();
     }
   };
 
-  // Combined requests
-  const allRequests = [...realTimeRequests, ...staticRequests];
+  // Filter requests by service type
+  const filteredRequests = realTimeRequests.filter(req => 
+    !req.service_type || req.service_type === providerInfo.serviceType
+  );
+
+  const staticRequests = [
+    { id: 1, service: 'Plumbing', customer: 'Ahmed Raza', location: 'Gulshan', budget: '2,500', time: '2 hours ago' },
+    { id: 2, service: 'AC Repair', customer: 'Sara Khan', location: 'DHA', budget: '3,000', time: '5 hours ago' },
+  ];
+
+  const allRequests = [...filteredRequests, ...staticRequests];
+
+  if (!providerInfo.id) {
+    return <div style={{ padding: '50px', textAlign: 'center' }}>Loading provider information...</div>;
+  }
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      {/* Connection Status - UPDATED */}
+      {/* Connection Status */}
       <div style={{
         backgroundColor: connected ? '#d4edda' : '#f8d7da',
         color: connected ? '#155724' : '#721c24',
@@ -251,7 +306,7 @@ const ProviderDashboard = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {connected ? '✅' : '❌'}
           <span>
-            {connectionStatus} | {providerInfo.service} | {allRequests.length} Available Jobs
+            {connectionStatus} | {providerInfo.service} | {filteredRequests.length} Available Jobs
           </span>
         </div>
         {!connected && (
@@ -401,9 +456,9 @@ const ProviderDashboard = () => {
             <h3 style={{ margin: 0, color: '#333' }}>{activeRequests}</h3>
             <p style={{ margin: '5px 0 0 0', color: '#666' }}>
               {connected ? 'Live Requests' : 'Active Requests'}
-              {realTimeRequests.length > 0 && (
+              {filteredRequests.length > 0 && (
                 <span style={{ color: '#dc3545', marginLeft: '5px', fontSize: '12px' }}>
-                  ({realTimeRequests.length} new)
+                  ({filteredRequests.length} new)
                 </span>
               )}
             </p>
@@ -423,8 +478,8 @@ const ProviderDashboard = () => {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{ color: '#333', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <FaBell /> 
-              {realTimeRequests.length > 0 ? '🔥 LIVE Service Requests' : 'Service Requests'}
-              {realTimeRequests.length > 0 && (
+              {filteredRequests.length > 0 ? '🔥 LIVE Service Requests' : 'Service Requests'}
+              {filteredRequests.length > 0 && (
                 <span style={{
                   backgroundColor: '#dc3545',
                   color: 'white',
@@ -433,7 +488,7 @@ const ProviderDashboard = () => {
                   fontSize: '12px',
                   marginLeft: '10px'
                 }}>
-                  {realTimeRequests.length} NEW
+                  {filteredRequests.length} NEW
                 </span>
               )}
             </h2>
@@ -466,13 +521,13 @@ const ProviderDashboard = () => {
                   border: '1px solid #eee',
                   borderRadius: '8px',
                   marginBottom: '15px',
-                  backgroundColor: index < realTimeRequests.length ? '#fff8e1' : '#f9f9f9',
-                  borderLeft: index < realTimeRequests.length ? '5px solid #ffc107' : '5px solid #007bff'
+                  backgroundColor: index < filteredRequests.length ? '#fff8e1' : '#f9f9f9',
+                  borderLeft: index < filteredRequests.length ? '5px solid #ffc107' : '5px solid #007bff'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <h3 style={{ marginBottom: '10px', color: '#444' }}>
                       {req.service}
-                      {index < realTimeRequests.length && (
+                      {index < filteredRequests.length && (
                         <span style={{
                           backgroundColor: '#ffc107',
                           color: '#000',
@@ -486,7 +541,7 @@ const ProviderDashboard = () => {
                       )}
                     </h3>
                     <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#28a745' }}>
-                      {req.budget}
+                      {req.budget} PKR
                     </span>
                   </div>
                   
@@ -542,7 +597,6 @@ const ProviderDashboard = () => {
 
         {/* Right - Profile & Status */}
         <div>
-          {/* Profile */}
           <div style={{
             backgroundColor: 'white',
             borderRadius: '10px',
@@ -567,7 +621,6 @@ const ProviderDashboard = () => {
             </div>
           </div>
 
-          {/* Connection Status */}
           <div style={{
             backgroundColor: 'white',
             borderRadius: '10px',
@@ -593,7 +646,7 @@ const ProviderDashboard = () => {
                 </span>
               </p>
               <p><strong>Service Type:</strong> {providerInfo.serviceType}</p>
-              <p><strong>Live Jobs:</strong> {realTimeRequests.length}</p>
+              <p><strong>Live Jobs:</strong> {filteredRequests.length}</p>
               <p><strong>Accepted Today:</strong> {acceptedJobs.length}</p>
               
               <button 

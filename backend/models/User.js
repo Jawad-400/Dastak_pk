@@ -1,5 +1,5 @@
 const db = require('../config/database');
-const bcrypt = require('bcrypt');
+const bcryptjs = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 
@@ -10,7 +10,7 @@ class User {
     
     try {
       const uuid = uuidv4();
-      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const hashedPassword = await bcryptjs.hash(userData.password, 10);
       const verificationToken = crypto.randomBytes(32).toString('hex');
       
       // Insert into users table
@@ -120,7 +120,7 @@ class User {
 
   // Verify password
   static async verifyPassword(user, password) {
-    return await bcrypt.compare(password, user.password_hash);
+    return await bcryptjs.compare(password, user.password_hash);
   }
 
   // Update user
@@ -302,7 +302,7 @@ class User {
     const user = await this.verifyResetToken(token);
     if (!user) return false;
     
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const hashedPassword = await bcryptjs.hash(newPassword, 10);
     
     const sql = `
       UPDATE users 

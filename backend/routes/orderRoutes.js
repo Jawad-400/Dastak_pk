@@ -1,78 +1,61 @@
 const express = require('express');
 const router = express.Router();
-const OrderController = require('../controllers/orderController');
-const auth = require('../middleware/auth');
-const { body, param } = require('express-validator');
+const orderController = require('../controllers/orderController');
+const { verifyToken, allowCustomer, allowProvider, allowCustomerOrProvider } = require('../middleware/auth');
+const { validateRequest } = require('../middleware/validation');
 
-// All order routes require authentication
-router.use(auth.verifyToken);
+// ==================== CUSTOMER ROUTES ====================
 
-// Order management
-router.post('/orders', [
-  body('serviceType').notEmpty().trim(),
-  body('description').notEmpty().trim(),
-  body('location.address').notEmpty().trim(),
-  body('price.amount').isFloat({ min: 0 }),
-  body('schedule.preferredDate').optional().isISO8601(),
-  auth.authorize('customer')
-], OrderController.createOrder);
+// Create a new request (CUSTOMERS ONLY)
+router.post('/requests', 
+  verifyToken, 
+  allowCustomer, 
+  validateRequest, 
+  orderController.createRequest
+);
 
-router.get('/orders', OrderController.getUserOrders);
+// ==================== PROVIDER ROUTES ====================
 
-router.get('/orders/available', [
-  auth.authorize('provider')
-], OrderController.getAvailableOrders);
+// Accept a request (PROVIDERS ONLY)
+router.post('/requests/:id/accept', 
+  verifyToken, 
+  allowProvider, 
+  orderController.acceptRequest
+);
 
-router.get('/orders/search', [
-  auth.authorize('admin')
-], OrderController.searchOrders);
+// Complete a request (PROVIDERS ONLY)
+router.post('/requests/:id/complete', 
+  verifyToken, 
+  allowProvider, 
+  orderController.completeRequest
+);
 
-router.get('/orders/stats', [
-  auth.authorize('admin')
-], OrderController.getOrderStats);
+// ==================== SHARED ROUTES ====================
 
-router.get('/orders/:orderId', [
-  param('orderId').notEmpty()
-], OrderController.getOrder);
+// Get all requests (CUSTOMERS & PROVIDERS)
+router.get('/requests', 
+  verifyToken, 
+  allowCustomerOrProvider, 
+  orderController.getRequests
+);
 
-router.put('/orders/:orderId/status', [
-  param('orderId').notEmpty(),
-  body('status').isIn(['in_progress', 'completed', 'cancelled', 'rejected']),
-  body('notes').optional().trim()
-], OrderController.updateOrderStatus);
+// Get single request by ID (CUSTOMERS & PROVIDERS)
+router.get('/requests/:id', 
+  verifyToken, 
+  allowCustomerOrProvider, 
+  orderController.getRequest
+);
 
-router.post('/orders/:orderId/accept', [
-  param('orderId').notEmpty(),
-  auth.authorize('provider')
-], OrderController.acceptOrder);
+// ==================== PAYMENT ROUTES (STUBS) ====================
+router.post('/payments/create', 
+  verifyToken, 
+  allowCustomer, 
+  orderController.createPayment
+);
 
-// Order messages
-router.post('/orders/:orderId/messages', [
-  param('orderId').notEmpty(),
-  body('message').notEmpty().trim()
-], OrderController.addMessage);
-
-router.get('/orders/:orderId/messages', [
-  param('orderId').notEmpty()
-], OrderController.getOrderMessages);
-
-// Order ratings
-router.post('/orders/:orderId/ratings', [
-  param('orderId').notEmpty(),
-  body('rating').isInt({ min: 1, max: 5 }),
-  body('type').isIn(['customer', 'provider']),
-  body('review').optional().trim()
-], OrderController.addRating);
-
-// Admin only routes
-router.put('/orders/:orderId', [
-  param('orderId').notEmpty(),
-  auth.authorize('admin')
-], OrderController.updateOrder);
-
-router.delete('/orders/:orderId', [
-  param('orderId').notEmpty(),
-  auth.authorize('admin')
-], OrderController.deleteOrder);
+router.post('/payments/verify', 
+  verifyToken, 
+  orderController.verifyPayment
+);
 
 module.exports = router;

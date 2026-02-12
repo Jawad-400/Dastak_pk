@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { FaPhone, FaLock, FaUser, FaMapMarkerAlt, FaEnvelope, FaIdCard } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 import { socket } from '../../Services/socket';
 
@@ -26,6 +25,7 @@ const CustomerLogin = () => {
   const [generalError, setGeneralError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // ========== VALIDATION FUNCTIONS ==========
   const validateField = (name, value) => {
     if (name === 'phone') {
       const digits = value.replace(/\D/g, '');
@@ -83,6 +83,7 @@ const CustomerLogin = () => {
     return nextErrors;
   };
 
+  // ========== HANDLERS ==========
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
@@ -100,6 +101,122 @@ const CustomerLogin = () => {
     setErrors({ ...errors, [name]: err });
   };
 
+  // ========== PHONE-ONLY LOGIN HANDLER ==========
+  const handleLogin = async (phone, password) => {
+    try {
+      const response = await fetch('http://localhost:4000/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          phone: phone.replace(/\D/g, ''),
+          password 
+        })
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        const { user, token } = data.data;
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify({
+          id: user.id,
+          name: user.name,
+          user_type: 'customer',
+          phone: user.phone
+        }));
+        
+        console.log('✅ Customer logged in with phone:', phone);
+        
+        if (socket && socket.updateAuth) {
+          socket.updateAuth({
+            id: user.id,
+            name: user.name,
+            user_type: 'customer',
+            token: token,
+            service: ''
+          });
+          
+          setTimeout(() => {
+            console.log('🔌 Connecting WebSocket...');
+            socket.connect();
+          }, 100);
+        }
+        
+        setSuccessMessage('Logged in successfully!');
+        setTimeout(() => navigate('/customer-portal'), 1000);
+      } else {
+        setGeneralError(data.error || 'Login failed');
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setGeneralError('Network error. Please try again.');
+    }
+  };
+
+  // ========== REGISTER HANDLER ==========
+  const handleRegister = async (userData) => {
+    try {
+      const response = await fetch('http://localhost:4000/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: userData.email,
+          password: userData.password,
+          name: userData.name,
+          phone: userData.phone.replace(/\D/g, ''),
+          user_type: 'customer',
+          city: userData.city,
+          cnic: userData.cnic
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const { user, token } = data.data;
+        
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify({
+          id: user.id,
+          name: user.name,
+          user_type: 'customer',
+          phone: user.phone
+        }));
+        
+        console.log('✅ Customer registered with phone:', user.phone);
+        
+        if (socket && socket.updateAuth) {
+          socket.updateAuth({
+            id: user.id,
+            name: user.name,
+            user_type: 'customer',
+            token: token,
+            service: ''
+          });
+          
+          setTimeout(() => {
+            console.log('🔌 Connecting WebSocket...');
+            socket.connect();
+          }, 100);
+        }
+        
+        setSuccessMessage('Account created successfully!');
+        setTimeout(() => navigate('/customer-portal'), 1500);
+        
+        return true;
+      } else {
+        setGeneralError(data.error || 'Registration failed. Please try again.');
+        return false;
+      }
+    } catch (error) {
+      console.error('Registration error:', error);
+      setGeneralError('Network error. Please check if server is running.');
+      return false;
+    }
+  };
+
+  // ========== SUBMIT HANDLER ==========
   const handleSubmit = async (e) => {
     e.preventDefault();
     setGeneralError('');
@@ -119,37 +236,16 @@ const CustomerLogin = () => {
     }
 
     setIsSubmitting(true);
+    
     try {
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const userData = {
-        name: formData.name || 'Customer',
-        phone: formData.phone.replace(/\D/g, ''),
-        email: formData.email,
-        city: formData.city,
-        cnic: formData.cnic,
-        id: 'user_' + Date.now().toString(), // Generate user ID
-        role: 'customer' // Set role
-      };
-      
-      localStorage.setItem('dastak_user', JSON.stringify(userData));
-      
-      // ========== ADD THIS: Update WebSocket authentication ==========
-      if (socket && socket.updateAuth) {
-        socket.updateAuth({
-          ...userData,
-          token: 'user-token-' + Date.now() // Add a token
-        });
-        console.log('✅ WebSocket authentication updated for customer');
+      if (isLogin) {
+        await handleLogin(
+          formData.phone,
+          formData.password
+        );
+      } else {
+        await handleRegister(formData);
       }
-      // ========== END OF ADDED CODE ==========
-      
-      setSuccessMessage(isLogin ? 'Logged in successfully!' : 'Account created successfully!');
-      
-      setTimeout(() => {
-        navigate('/customer-portal');
-      }, 1000);
-      
     } catch (err) {
       console.error(err);
       setGeneralError(err.message || 'Submission failed. Please try again.');
@@ -158,6 +254,7 @@ const CustomerLogin = () => {
     }
   };
 
+  // ========== TOGGLE LOGIN/SIGNUP ==========
   const toggleMode = () => {
     setIsLogin(!isLogin);
     setErrors({});
@@ -167,7 +264,7 @@ const CustomerLogin = () => {
     setFormData({ phone: '', password: '', name: '', city: '', email: '', cnic: '' });
   };
 
-  // Inline styles
+  // ========== STYLES ==========
   const styles = {
     container: {
       maxWidth: "1200px",
@@ -214,7 +311,8 @@ const CustomerLogin = () => {
       position: "relative"
     },
     activeTab: {
-      color: "#3498db"
+      color: "#3498db",
+      borderBottom: "2px solid #3498db"
     },
     form: {
       marginBottom: "30px"
@@ -282,6 +380,22 @@ const CustomerLogin = () => {
       fontWeight: "600",
       cursor: "pointer",
       fontSize: "1rem"
+    },
+    errorMessage: {
+      backgroundColor: "#fde8e8",
+      color: "#e74c3c",
+      padding: "12px",
+      borderRadius: "8px",
+      marginBottom: "20px",
+      textAlign: "center"
+    },
+    successMessage: {
+      backgroundColor: "#e8f5e9",
+      color: "#27ae60",
+      padding: "12px",
+      borderRadius: "8px",
+      marginBottom: "20px",
+      textAlign: "center"
     }
   };
 
@@ -289,7 +403,9 @@ const CustomerLogin = () => {
     <div style={styles.container}>
       <div style={styles.header}>
         <h2 style={styles.title}>Welcome to Dastak.pk</h2>
-        <p style={styles.subtitle}>{isLogin ? 'Login to your account' : 'Create a new account'}</p>
+        <p style={styles.subtitle}>
+          {isLogin ? 'Login with your phone number' : 'Create a new account'}
+        </p>
       </div>
       
       <div style={styles.card}>
@@ -308,7 +424,36 @@ const CustomerLogin = () => {
           </button>
         </div>
         
+        {generalError && (
+          <div style={styles.errorMessage}>
+            {generalError}
+          </div>
+        )}
+        
+        {successMessage && (
+          <div style={styles.successMessage}>
+            {successMessage}
+          </div>
+        )}
+        
         <form onSubmit={handleSubmit} style={styles.form}>
+          {/* Phone Field - ALWAYS FIRST */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Phone Number *</label>
+            <input
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              placeholder="03XX-XXXXXXX"
+              style={{...styles.input, ...(errors.phone ? styles.errorInput : {})}}
+              autoFocus={isLogin}
+            />
+            {errors.phone && <span style={styles.errorText}>{errors.phone}</span>}
+            <span style={styles.hint}>Format: 03XX-XXXXXXX</span>
+          </div>
+          
           {!isLogin && (
             <>
               <div style={styles.formGroup}>
@@ -353,41 +498,24 @@ const CustomerLogin = () => {
                 />
                 {errors.email && <span style={styles.errorText}>{errors.email}</span>}
               </div>
+
+              <div style={styles.formGroup}>
+                <label style={styles.label}>City *</label>
+                <select
+                  name="city"
+                  value={formData.city}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  style={{...styles.input, ...(errors.city ? styles.errorInput : {})}}
+                >
+                  <option value="">Select your city</option>
+                  {CITIES.map((city) => (
+                    <option key={city} value={city.toLowerCase()}>{city}</option>
+                  ))}
+                </select>
+                {errors.city && <span style={styles.errorText}>{errors.city}</span>}
+              </div>
             </>
-          )}
-          
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Phone Number *</label>
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="03XX-XXXXXXX"
-              style={{...styles.input, ...(errors.phone ? styles.errorInput : {})}}
-            />
-            {errors.phone && <span style={styles.errorText}>{errors.phone}</span>}
-            <span style={styles.hint}>Format: 03XX-XXXXXXX</span>
-          </div>
-          
-          {!isLogin && (
-            <div style={styles.formGroup}>
-              <label style={styles.label}>City *</label>
-              <select
-                name="city"
-                value={formData.city}
-                onChange={handleChange}
-                onBlur={handleBlur}
-                style={{...styles.input, ...(errors.city ? styles.errorInput : {})}}
-              >
-                <option value="">Select your city</option>
-                {CITIES.map((city) => (
-                  <option key={city} value={city.toLowerCase()}>{city}</option>
-                ))}
-              </select>
-              {errors.city && <span style={styles.errorText}>{errors.city}</span>}
-            </div>
           )}
           
           <div style={styles.formGroup}>
@@ -428,7 +556,7 @@ const CustomerLogin = () => {
             {isSubmitting ? (
               <span>Processing...</span>
             ) : (
-              isLogin ? 'Login' : 'Create Account'
+              isLogin ? 'Login with Phone' : 'Create Account'
             )}
           </button>
         </form>

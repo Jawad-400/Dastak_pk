@@ -20,6 +20,8 @@ const PostRequest = () => {
   const [requestId, setRequestId] = useState('');
   const [debugLogs, setDebugLogs] = useState([]);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState('');
   const [formData, setFormData] = useState({
     serviceType: '',
     description: '',
@@ -31,14 +33,14 @@ const PostRequest = () => {
   });
 
   const serviceCategories = [
-    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage, Kitchen Drainage Issues' },
-    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Board Issues, Light Breakage' },
-    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing, Gas Filling, AC Not Working, Cooling Issues' },
-    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing, Polishing' },
-    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling, Wall Papers' },
-    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning, Garden Cleaning, Dusting' },
-    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine, Fridge, LCD, Oven, Heater, Stove' },
-    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite, Cockroach, Mosquito, Sprays, Fumigation' },
+    { id: 1, name: 'Plumbing', value: 'plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage' },
+    { id: 2, name: 'Electrical', value: 'electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Lights' },
+    { id: 3, name: 'AC Repair', value: 'ac_repair', icon: '❄️', description: 'AC Servicing, Gas Filling, Cooling Issues' },
+    { id: 4, name: 'Carpentry', value: 'carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing' },
+    { id: 5, name: 'Painting', value: 'painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling' },
+    { id: 6, name: 'Cleaning', value: 'cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning' },
+    { id: 7, name: 'Appliance Repair', value: 'appliance_repair', icon: '🔧', description: 'Washing Machine, Fridge, LCD, Oven' },
+    { id: 8, name: 'Pest Control', value: 'pest_control', icon: '🐜', description: 'Termite, Cockroach, Mosquito' },
   ];
 
   // Add debug log
@@ -49,10 +51,25 @@ const PostRequest = () => {
         time: new Date().toLocaleTimeString(),
         msg
       }];
-      // Keep only last 10 logs
       return newLogs.slice(-10);
     });
   };
+
+  // Load user and token from localStorage
+  useEffect(() => {
+    const storedToken = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
+    
+    if (storedToken && storedUser) {
+      setToken(storedToken);
+      setUser(JSON.parse(storedUser));
+      addDebug('✅ User loaded from localStorage');
+    } else {
+      addDebug('❌ No user found - please login first');
+      setError('Please login to post a request');
+      setTimeout(() => navigate('/customer-login'), 2000);
+    }
+  }, [navigate]);
 
   // Connect WebSocket
   useEffect(() => {
@@ -73,13 +90,13 @@ const PostRequest = () => {
     };
     
     // Add event listeners
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
+    socket.on('connected', handleConnect);
+    socket.on('disconnected', handleDisconnect);
     
     // Listen for request confirmation from server
     socket.on('request_created', (data) => {
       addDebug(`✅ Server confirmed request creation: ${JSON.stringify(data)}`);
-      if (data.id === requestId) {
+      if (data.data?.requestId === requestId || data.requestId === requestId) {
         setSuccess(true);
       }
     });
@@ -87,26 +104,19 @@ const PostRequest = () => {
     // Listen for request acceptance by provider
     socket.on('request_accepted', (data) => {
       addDebug(`✅ Provider accepted your request: ${JSON.stringify(data)}`);
-      if (data.request_id === requestId) {
-        alert(`🎉 Your request has been accepted by ${data.provider}! They will contact you soon.`);
+      if (data.data?.requestId === requestId || data.requestId === requestId) {
+        alert(`🎉 Your request has been accepted by ${data.data?.providerName || data.providerName}! They will contact you soon.`);
       }
     });
     
-    // Simulate connection for mock socket
-    setTimeout(() => {
-      if (!socketConnected && socket.connected) {
-        handleConnect();
-      }
-    }, 500);
-    
     return () => {
       // Clean up listeners
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
+      socket.off('connected', handleConnect);
+      socket.off('disconnected', handleDisconnect);
       socket.off('request_created');
       socket.off('request_accepted');
     };
-  }, []);
+  }, [requestId]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -119,98 +129,105 @@ const PostRequest = () => {
       return;
     }
     
+    if (!token || !user) {
+      setError('Please login first');
+      addDebug('❌ No token or user found');
+      setTimeout(() => navigate('/customer-login'), 2000);
+      return;
+    }
+    
     setError('');
     setLoading(true);
     
-    // 2. Prepare data - FOR GO WEB SOCKET SERVER
+    // 2. Prepare data - FIXED: Use the value from serviceCategories
     const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     setRequestId(newRequestId);
     
+    // ✅ FIX: Get the correct service_type value from the category
+    const selectedCategory = serviceCategories.find(c => c.name === formData.serviceType);
+    const serviceTypeValue = selectedCategory ? selectedCategory.value : formData.serviceType.toLowerCase().replace(/\s+/g, '_');
+    
+    addDebug(`✅ Selected service: ${formData.serviceType} -> Mapped to: ${serviceTypeValue}`);
+    
     const requestData = {
-      id: newRequestId,
       title: formData.serviceType,
       description: formData.description,
       location: formData.location,
-      schedule: formData.schedule,
       budget: formData.budget || 'Negotiable',
-      contact_number: formData.contactNumber,
-      customer_name: formData.customerName,
-      // Required for Go server
-      customer_id: `cust_${Date.now()}_${Math.floor(Math.random() * 1000)}`, // In real app, get from auth
-      service_type: formData.serviceType.toLowerCase().replace(/\s+/g, '_'),
-      timestamp: Date.now()
+      customerId: user.id.toString(),
+      serviceType: serviceTypeValue,  // ✅ Using correct value from category
+      schedule: formData.schedule,
+      contact: formData.contactNumber
     };
     
-    addDebug(`Form data prepared: ${JSON.stringify(requestData, null, 2)}`);
-    addDebug(`WebSocket connected: ${socketConnected}`);
+    addDebug(`📦 Request data: ${JSON.stringify(requestData, null, 2)}`);
     
     try {
-      // 3. Send via WebSocket - FORMAT FOR GO SERVER
-      addDebug('Sending request to WebSocket server...');
+      // ✅ PRIMARY: Send via REST API with Authorization header
+      addDebug('📤 Sending request to REST API...');
       
-      // Send the request - Go server expects this exact format
-      if (socket && typeof socket.emit === 'function') {
-        socket.emit('create_request', {
-          id: newRequestId,
-          title: formData.serviceType,
-          description: formData.description,
-          location: formData.location,
-          budget: formData.budget || 'Negotiable',
-          customer_id: `cust_${Date.now()}`,
-          customer_name: formData.customerName,
-          service_type: formData.serviceType.toLowerCase().replace(/\s+/g, '_'),
-          schedule: formData.schedule,
-          contact_number: formData.contactNumber,
-          timestamp: Date.now()
-        });
-        addDebug(`✅ Request sent to WebSocket server! ID: ${newRequestId}`);
+      const response = await fetch('http://localhost:4000/api/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        addDebug(`✅✅✅ Request created via REST API! ID: ${data.data.id || newRequestId}`);
+        addDebug(`🔧 Service type sent: ${serviceTypeValue}`);
+        setRequestId(data.data.id || newRequestId);
         
-        // Also send to REST API as backup
-        try {
-          const apiResponse = await fetch('http://localhost:8080/api/requests', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestData)
+        // ✅ SECONDARY: Also send via WebSocket for real-time updates
+        if (socket && socket.isConnected()) {
+          socket.send('create_request', {
+            id: data.data.id || newRequestId,
+            title: formData.serviceType,
+            description: formData.description,
+            location: formData.location,
+            budget: formData.budget || 'Negotiable',
+            customer_id: user.id.toString(),
+            customer_name: formData.customerName,
+            service_type: serviceTypeValue,  // ✅ Using correct value
+            schedule: formData.schedule,
+            contact_number: formData.contactNumber
           });
-          
-          if (apiResponse.ok) {
-            addDebug('✅ Request also saved to REST API');
-          }
-        } catch (apiError) {
-          addDebug(`⚠️ REST API error: ${apiError.message}`);
+          addDebug('✅ Request also sent via WebSocket');
         }
+        
+        // 4. Show success
+        setSuccess(true);
+        setLoading(false);
+        
+        // 5. Clear form after 5 seconds
+        setTimeout(() => {
+          setFormData({
+            serviceType: '',
+            description: '',
+            location: '',
+            schedule: 'ASAP',
+            budget: '',
+            contactNumber: '',
+            customerName: '',
+          });
+          setStep(1);
+          setSuccess(false);
+          addDebug('Form reset for new request');
+        }, 5000);
+        
       } else {
-        addDebug(`⚠️ WebSocket not available, saving locally`);
-        // Fallback: Save to localStorage
-        const existingRequests = JSON.parse(localStorage.getItem('dastak_requests') || '[]');
-        localStorage.setItem('dastak_requests', JSON.stringify([...existingRequests, requestData]));
+        addDebug(`❌ API Error: ${data.error || 'Unknown error'}`);
+        setError(data.error || 'Failed to post request');
+        setLoading(false);
       }
       
-      // 4. Show success
-      setSuccess(true);
-      setLoading(false);
-      
-      // 5. Clear form after 5 seconds
-      setTimeout(() => {
-        setFormData({
-          serviceType: '',
-          description: '',
-          location: '',
-          schedule: 'ASAP',
-          budget: '',
-          contactNumber: '',
-          customerName: '',
-        });
-        setStep(1);
-        setSuccess(false);
-        addDebug('Form reset for new request');
-      }, 5000);
-      
     } catch (err) {
-      addDebug(`❌ Error: ${err.message}`);
-      setError('Failed to post request. Please try again.');
+      addDebug(`❌ Network Error: ${err.message}`);
+      setError('Network error. Please try again.');
       setLoading(false);
     } finally {
       addDebug('=== FORM SUBMIT COMPLETED ===');
@@ -235,61 +252,51 @@ const PostRequest = () => {
     if (step > 1) setStep(step - 1);
   };
 
-  // Test WebSocket manually
-  const testWebSocket = () => {
-    const testId = `test_${Date.now()}`;
-    addDebug(`Testing WebSocket with ID: ${testId}`);
-    
-    // Safely emit test event
-    if (socket && typeof socket.emit === 'function') {
-      socket.emit('create_request', {
-        id: testId,
-        title: 'TEST Plumbing Service',
-        description: 'This is a test request for plumbing service',
-        location: 'Test Street, Lahore',
-        budget: '1500 PKR',
-        customer_id: 'test_customer',
-        customer_name: 'Test User',
-        service_type: 'plumbing',
-        schedule: 'ASAP',
-        contact_number: '+92 300 0000000',
-        timestamp: Date.now()
-      });
-      addDebug(`✅ Test request sent via WebSocket`);
-    } else {
-      addDebug(`⚠️ WebSocket emit not available`);
+  // Quick test button - FIXED
+  const quickTest = () => {
+    if (!user) {
+      alert('Please login first');
+      navigate('/customer-login');
+      return;
     }
     
-    alert(`Test request sent! Check console. ID: ${testId}`);
-  };
-
-  // Quick test button
-  const quickTest = () => {
+    const electricalCategory = serviceCategories.find(c => c.name === 'Electrical');
+    addDebug(`🧪 Test mode: Will use service value: ${electricalCategory?.value || 'electrical'}`);
+    
     setFormData({
-      serviceType: 'Plumbing',
-      description: 'Fix leaking kitchen sink pipe. The pipe under the sink is leaking and needs replacement. Water is dripping constantly.',
+      serviceType: 'Electrical',
+      description: 'Fix AC not cooling properly. The AC is running but not cooling. Need immediate repair.',
       location: 'House No. 123, Street 5, Gulberg, Lahore',
       schedule: 'today',
-      budget: '2000 PKR',
-      contactNumber: '+92 300 1234567',
-      customerName: 'Ahmed Raza',
+      budget: '2500 PKR',
+      contactNumber: '03001234567',
+      customerName: user.name || 'Test Customer',
     });
     setStep(3);
-    addDebug('Form filled with test data');
     setError('');
   };
 
   // Manual connect button
   const manualConnect = () => {
     addDebug('Manually connecting WebSocket...');
-    if (socket && typeof socket.connect === 'function') {
-      socket.connect();
-      setTimeout(() => {
-        setSocketConnected(socket.connected);
-        addDebug(socket.connected ? '✅ Manual connect successful' : '❌ Manual connect failed');
-      }, 300);
-    }
+    socket.connect();
+    setTimeout(() => {
+      setSocketConnected(socket.isConnected());
+      addDebug(socket.isConnected() ? '✅ Manual connect successful' : '❌ Manual connect failed');
+    }, 300);
   };
+
+  // If no user, show login required
+  if (!user) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.errorBox}>
+          <FaExclamationTriangle style={{marginRight: '10px'}} />
+          Please login to post a request. Redirecting...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.container}>
@@ -309,6 +316,34 @@ const PostRequest = () => {
         <p style={styles.subtitle}>Describe your service need and get Orders from local providers</p>
       </div>
 
+      {/* User Info */}
+      {user && (
+        <div style={{
+          backgroundColor: '#e3f2fd',
+          padding: '15px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <div>
+            <strong>👤 Logged in as:</strong> {user.name} ({user.phone})
+          </div>
+          <div>
+            <span style={{
+              backgroundColor: token ? '#28a745' : '#dc3545',
+              color: 'white',
+              padding: '5px 10px',
+              borderRadius: '4px',
+              fontSize: '12px'
+            }}>
+              {token ? '✅ Authenticated' : '❌ Not Authenticated'}
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Connection Status */}
       <div style={{
         ...styles.connectionStatus,
@@ -327,8 +362,8 @@ const PostRequest = () => {
         </div>
         <small style={{display: 'block', marginTop: '5px'}}>
           {socketConnected 
-            ? 'Providers will see your request instantly in real-time' 
-            : 'Connect to WebSocket server for live updates'}
+            ? '✅ Providers will see your request instantly in real-time' 
+            : '⚠️ WebSocket offline - request will still be saved but not real-time'}
         </small>
       </div>
 
@@ -338,7 +373,7 @@ const PostRequest = () => {
           <FaCheckCircle style={{fontSize: '50px', color: '#28a745', marginBottom: '15px'}} />
           <h2>🎉 Request Posted Successfully!</h2>
           <p>Request ID: <strong style={{backgroundColor: '#e9ecef', padding: '5px 10px', borderRadius: '4px'}}>{requestId}</strong></p>
-          <p>✅ Sent to all available providers in real-time</p>
+          <p>✅ Sent to all available providers</p>
           <p>🔔 You will be notified when a provider accepts</p>
           <div style={{marginTop: '20px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px'}}>
             <span style={{fontSize: '12px', color: '#666'}}>
@@ -362,14 +397,8 @@ const PostRequest = () => {
           <strong>Debug Console</strong>
           <div>
             <button 
-              onClick={testWebSocket}
-              style={{...styles.smallBtn, backgroundColor: '#17a2b8'}}
-            >
-              Test WebSocket
-            </button>
-            <button 
               onClick={() => setDebugLogs([])}
-              style={{...styles.smallBtn, backgroundColor: '#6c757d', marginLeft: '5px'}}
+              style={{...styles.smallBtn, backgroundColor: '#6c757d'}}
             >
               Clear Logs
             </button>
@@ -423,7 +452,7 @@ const PostRequest = () => {
                       }}
                       onClick={() => {
                         setFormData({...formData, serviceType: category.name});
-                        addDebug(`Selected service: ${category.name}`);
+                        addDebug(`Selected service: ${category.name} -> value: ${category.value}`);
                       }}
                     >
                       <div style={styles.categoryIcon}>{category.icon}</div>
@@ -576,13 +605,19 @@ const PostRequest = () => {
                   <div style={styles.summaryItem}>
                     <strong>Budget:</strong> {formData.budget || 'Negotiable'}
                   </div>
+                  <div style={styles.summaryItem}>
+                    <strong>Customer:</strong> {formData.customerName}
+                  </div>
+                  <div style={styles.summaryItem}>
+                    <strong>Contact:</strong> {formData.contactNumber}
+                  </div>
                 </div>
 
                 <div style={{textAlign: 'center', margin: '20px 0'}}>
                   <div style={{fontSize: '14px', color: '#666', marginBottom: '10px'}}>
                     {socketConnected 
                       ? '✅ Your request will be sent to providers instantly in real-time' 
-                      : '⚠️ WebSocket offline - providers won\'t see your request live'}
+                      : '⚠️ WebSocket offline - request will still be saved'}
                   </div>
                 </div>
 
@@ -641,10 +676,7 @@ const styles = {
     borderRadius: '5px',
     cursor: 'pointer',
     fontSize: '16px',
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: '#5a6268'
-    }
+    transition: 'all 0.2s ease'
   },
   connectionStatus: {
     padding: '15px',
@@ -723,10 +755,7 @@ const styles = {
     cursor: 'pointer',
     fontSize: '12px',
     fontWeight: 'bold',
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      opacity: 0.9
-    }
+    transition: 'all 0.2s ease'
   },
   progressContainer: {
     marginBottom: '30px'
@@ -791,11 +820,7 @@ const styles = {
     textAlign: 'center',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
-    '&:hover': {
-      transform: 'translateY(-3px)',
-      boxShadow: '0 5px 15px rgba(0,0,0,0.1)'
-    }
+    boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
   },
   categoryIcon: {
     fontSize: '30px',
@@ -839,12 +864,7 @@ const styles = {
     border: '1px solid #ced4da',
     borderRadius: '6px',
     fontSize: '16px',
-    transition: 'all 0.2s ease',
-    '&:focus': {
-      outline: 'none',
-      borderColor: '#80bdff',
-      boxShadow: '0 0 0 0.2rem rgba(0,123,255,.25)'
-    }
+    transition: 'all 0.2s ease'
   },
   textarea: {
     width: '100%',
@@ -856,12 +876,7 @@ const styles = {
     resize: 'vertical',
     minHeight: '120px',
     lineHeight: '1.5',
-    transition: 'all 0.2s ease',
-    '&:focus': {
-      outline: 'none',
-      borderColor: '#80bdff',
-      boxShadow: '0 0 0 0.2rem rgba(0,123,255,.25)'
-    }
+    transition: 'all 0.2s ease'
   },
   select: {
     width: '100%',
@@ -871,12 +886,7 @@ const styles = {
     fontSize: '16px',
     backgroundColor: 'white',
     transition: 'all 0.2s ease',
-    cursor: 'pointer',
-    '&:focus': {
-      outline: 'none',
-      borderColor: '#80bdff',
-      boxShadow: '0 0 0 0.2rem rgba(0,123,255,.25)'
-    }
+    cursor: 'pointer'
   },
   buttonGroup: {
     display: 'flex',
@@ -892,10 +902,7 @@ const styles = {
     cursor: 'pointer',
     fontSize: '16px',
     fontWeight: 'bold',
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: '#5a6268'
-    }
+    transition: 'all 0.2s ease'
   },
   nextBtn: {
     padding: '14px 30px',
@@ -906,10 +913,7 @@ const styles = {
     cursor: 'pointer',
     fontSize: '16px',
     fontWeight: 'bold',
-    transition: 'all 0.2s ease',
-    '&:hover': {
-      backgroundColor: '#0056b3'
-    }
+    transition: 'all 0.2s ease'
   },
   submitBtn: {
     padding: '16px 45px',
@@ -924,18 +928,7 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px rgba(40,167,69,0.3)',
-    '&:hover:not(:disabled)': {
-      backgroundColor: '#218838',
-      transform: 'translateY(-2px)',
-      boxShadow: '0 6px 8px rgba(40,167,69,0.4)'
-    },
-    '&:disabled': {
-      backgroundColor: '#6c757d',
-      cursor: 'not-allowed',
-      transform: 'none',
-      boxShadow: 'none'
-    }
+    boxShadow: '0 4px 6px rgba(40,167,69,0.3)'
   },
   summaryBox: {
     backgroundColor: '#f8f9fa',

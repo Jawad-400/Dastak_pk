@@ -1,3 +1,5 @@
+
+
 const { MongoClient } = require('mongodb');
 require('dotenv').config();
 
@@ -10,16 +12,19 @@ class MongoDB {
 
   async connect() {
     try {
-      const uri = process.env.MONGODB_URI || 'mongodb://admin:admin123@localhost:27017';
+      // CORRECTED URI - with authSource parameter
+      const uri = process.env.MONGODB_URI || 
+        'mongodb://admin:admin123@orders_mongo:27017/orders_db?authSource=admin';
+      
       const dbName = process.env.MONGODB_DB || 'orders_db';
       
+      console.log('MongoDB connecting to:', uri.replace(/\/\/admin:.*@/, '//***:***@'));
+      
       this.client = new MongoClient(uri, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true,
+        // Modern MongoDB driver options (v4+)
         maxPoolSize: 10,
-        minPoolSize: 2,
-        maxIdleTimeMS: 10000,
-        serverSelectionTimeoutMS: 5000,
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000,
         socketTimeoutMS: 45000,
       });
 
@@ -35,34 +40,53 @@ class MongoDB {
       return this.db;
     } catch (error) {
       console.error('❌ MongoDB connection failed:', error.message);
+      console.error('Error code:', error.code);
       throw error;
     }
   }
 
   async createIndexes() {
     try {
-      // Orders collection indexes
-      await this.db.collection('orders').createIndexes([
-        { key: { orderId: 1 }, unique: true, name: 'orderId_unique' },
-        { key: { customerId: 1 }, name: 'customerId_index' },
-        { key: { providerId: 1 }, name: 'providerId_index' },
-        { key: { status: 1 }, name: 'status_index' },
-        { key: { createdAt: -1 }, name: 'createdAt_desc' },
-        { key: { 'location.coordinates': '2dsphere' }, name: 'location_geo' }
-      ]);
-
-      // Users collection (cache from MySQL)
-      await this.db.collection('users_cache').createIndexes([
-        { key: { userId: 1 }, unique: true, name: 'userId_unique' },
-        { key: { email: 1 }, unique: true, name: 'email_unique' },
-        { key: { role: 1 }, name: 'role_index' }
-      ]);
-
-      console.log('✅ MongoDB indexes created');
+      // Try to drop old index if exists (don't fail if it doesn't)
+      try {
+        await this.db.collection('orders').dropIndex('orderId_unique');
+        console.log('✅ Dropped old orderId_unique index');
+      } catch (e) {
+        // Index doesn't exist - that's fine
+      }
+  
+      // Create indexes with error handling for each
+      try {
+        await this.db.collection('orders').createIndexes([
+          { key: { id: 1 }, unique: true, name: 'id_unique' },
+          { key: { customerId: 1 }, name: 'customerId_index' },
+          { key: { providerId: 1 }, name: 'providerId_index' },
+          { key: { status: 1 }, name: 'status_index' },
+          { key: { createdAt: -1 }, name: 'createdAt_desc' },
+          { key: { serviceType: 1 }, name: 'serviceType_index' }
+        ]);
+        console.log('✅ Orders indexes created');
+      } catch (indexError) {
+        console.error('⚠️ Orders index creation error:', indexError.message);
+      }
+  
+      // Users cache indexes
+      try {
+        await this.db.collection('users_cache').createIndexes([
+          { key: { userId: 1 }, unique: true, name: 'userId_unique' },
+          { key: { email: 1 }, unique: true, name: 'email_unique' },
+          { key: { phone: 1 }, name: 'phone_index' }
+        ]);
+        console.log('✅ Users cache indexes created');
+      } catch (indexError) {
+        console.error('⚠️ Users cache index error:', indexError.message);
+      }
+  
     } catch (error) {
-      console.error('Index creation error:', error);
+      console.error('⚠️ Index creation error (non-critical):', error.message);
     }
   }
+  
 
   async getCollection(collectionName) {
     if (!this.isConnected) {

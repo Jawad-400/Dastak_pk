@@ -20,7 +20,7 @@ const PORT = process.env.PORT || 4000;
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: false, // Adjust based on your needs
+  contentSecurityPolicy: false,
   crossOriginEmbedderPolicy: false
 }));
 
@@ -56,6 +56,21 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api', orderRoutes);
 
+// WebSocket stats endpoint
+app.get('/api/websocket/stats', (req, res) => {
+  if (global.wss) {
+    res.json({
+      success: true,
+      data: global.wss.getStats()
+    });
+  } else {
+    res.json({
+      success: false,
+      message: 'WebSocket server not running'
+    });
+  }
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Global error handler:', err);
@@ -85,19 +100,19 @@ async function startServer() {
     await mysqlDB.connect();
     await mongoDB.connect();
     
-    // Start server
+    // Start HTTP server
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📊 MySQL: ${process.env.MYSQL_HOST}:${process.env.MYSQL_PORT}`);
-      console.log(`🗄️  MongoDB: ${process.env.MONGODB_HOST}:${process.env.MONGODB_PORT}`);
+      console.log(`📊 MySQL: mysql:3306`);
+      console.log(`🗄️  MongoDB: orders_mongo:27017`);
       console.log(`🌐 CORS Origin: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
     });
 
-    // WebSocket setup (if you have WebSocket server)
-    if (process.env.ENABLE_WEBSOCKET === 'true') {
-      const { setupWebSocket } = require('./websocket/server');
-      setupWebSocket(server);
-    }
+    // Initialize WebSocket server
+    const WebSocketServer = require('./websocket/server');
+    const wss = new WebSocketServer(server);
+    global.wss = wss; // Make accessible globally
+    console.log(`✅ WebSocket server ready at ws://localhost:${PORT}/ws`);
 
     // Graceful shutdown
     process.on('SIGTERM', gracefulShutdown);
@@ -132,4 +147,4 @@ async function startServer() {
 // Start the server
 startServer();
 
-module.exports = app; // For testing
+module.exports = app;

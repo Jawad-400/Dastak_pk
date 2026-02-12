@@ -78,7 +78,7 @@ INSERT INTO users (email, username, password_hash, full_name, role, is_verified,
 VALUES (
     'admin@example.com',
     'admin',
-    '$2b$10$YourHashedPasswordHere', -- Use bcrypt to generate
+    '$2b$10$YourHashedPasswordHere', -- Use bcryptjs to generate
     'System Administrator',
     'admin',
     TRUE,
