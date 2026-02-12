@@ -24,27 +24,36 @@ import CustomerLogin from './components/auth/CustomerLogin';
 // Provider Components
 import ProviderPortal from './components/ProviderPortal';
 import ProviderDashboard from './components/ProviderDashboard';
-import ProviderJobsFeed from './components/provider/ProviderJobsFeed';
+import Allservices from './components/provider/Allservices';
 import PlaceorderModal from './components/PostRequest';
 import MyOrders from './components/provider/MyOrders';
 
 // WebSocket Components
-import FindJobs from './components/provider/ProviderJobsFeed';
+import FindJobs from './components/provider/Allservices';
 
 import './styles.css';
 
-// Home Page Component
+// Home Page Component - WITHOUT HowItWorks (since it has its own route now)
 function HomePage() {
   return (
     <>
       <Hero />
       <ServicesCategories />
-      <HowItWorks />
+      {/* REMOVED HowItWorks from here - it now has its own page */}
       <div className="action-sections">
         <PostRequest />
       </div>
       <UserSignup />
       <Testimonials />
+    </>
+  );
+}
+
+// How It Works Page - Full page version
+function HowItWorksPage() {
+  return (
+    <>
+      <HowItWorks />
     </>
   );
 }
@@ -71,12 +80,12 @@ function AppContent() {
   // Hide header on provider pages
   const hideHeader = location.pathname.includes('/provider-dashboard') || 
                      location.pathname.includes('/my-orders') || 
-                     location.pathname.includes('/find-jobs');
+                     location.pathname.includes('/find-jobs') 
   
   // Hide footer on provider pages
   const hideFooter = location.pathname.includes('/provider-dashboard') || 
                      location.pathname.includes('/my-orders') || 
-                     location.pathname.includes('/find-jobs');
+                     location.pathname.includes('/find-jobs') 
 
   return (
     <div className="App">
@@ -87,16 +96,20 @@ function AppContent() {
         <Route path="/services" element={<FindJobs />} />
         <Route path="/post-request" element={<PostRequest />} />
         <Route path="/customer-login" element={<CustomerLoginPage />} />
-        <Route path="/customer-portal" element={<PostRequest />} />
+        <Route path="/customer-portal" element={<CustomerOrderTracking />} />
+        <Route path="/customer-orders" element={<CustomerOrderTracking />} />
+        
+        {/* ✅ FIXED: How It Works Route - Now works correctly */}
+        <Route path="/how-it-works" element={<HowItWorksPage />} />
         
         {/* Provider Routes */}
         <Route path="/provider-portal" element={<ProviderPortalPage />} />
         <Route path="/provider-dashboard" element={<ProviderDashboardPage />} />
-        <Route path="/provider/jobs" element={<ProviderJobsFeed />} />
+        <Route path="/provider/jobs" element={<Allservices />} />
         <Route path="/provider/place-order" element={<PlaceorderModal />} />
         
         {/* Provider Routes */}
-        <Route path="/my-orders" element={<MyOrders />} />
+        <Route path="/my-orders" element={<ProviderDashboard />} />
         <Route path="/find-jobs" element={<FindJobs />} />
       </Routes>
       {!hideFooter && <Footer />}

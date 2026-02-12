@@ -1,1004 +1,1206 @@
 import React, { useState, useEffect } from 'react';
-import '../styles.css';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
-  FaClock, FaCheckCircle, FaUser, FaRupeeSign, 
-  FaCalendarAlt, FaMapMarkerAlt, FaPhone, FaStar,
-  FaArrowLeft, FaComments, FaPaperPlane, FaTimes,
-  FaPlus, FaTools, FaInfoCircle, FaEdit, FaTrash
+  FaArrowLeft, FaClock, FaCheckCircle, FaTimesCircle, 
+  FaSpinner, FaExclamationTriangle, FaStar, FaPhone, 
+  FaMapMarkerAlt, FaUser, FaTools, FaRupeeSign, FaCalendarAlt,
+  FaComments, FaCreditCard, FaHistory, FaBell, FaHome,
+  FaShoppingCart, FaBox, FaDownload
 } from 'react-icons/fa';
-import { useNavigate } from 'react-router-dom';
 import { socket } from '../Services/socket';
 
 const CustomerOrderTracking = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, post-request, my-orders
-  const [chatOpen, setChatOpen] = useState(false);
-  const [currentChat, setCurrentChat] = useState({ roomId: null, providerName: '' });
-  const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
-  
-  // New Request Form State
-  const [showRequestForm, setShowRequestForm] = useState(false);
-  const [formData, setFormData] = useState({
-    serviceType: '',
-    subService: '',
-    description: '',
-    address: '',
-    city: '',
-    date: '',
-    time: '',
-    budget: '',
-    urgency: 'normal',
-    contactPreference: 'phone'
-  });
-  const [formErrors, setFormErrors] = useState({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [connected, setConnected] = useState(false);
+  const [customerInfo, setCustomerInfo] = useState(null);
+  const [activeTab, setActiveTab] = useState('active');
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState(null);
+  const [rating, setRating] = useState(0);
+  const [review, setReview] = useState('');
+  const [paymentHistory, setPaymentHistory] = useState([]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [showChat, setShowChat] = useState(false);
 
-  // Services data for dropdown
-  const services = {
-    plumbing: ['Pipe Repair', 'Leak Fixing', 'Drain Cleaning', 'Toilet Installation', 'Water Heater'],
-    electrical: ['Wiring', 'Switch/Fixing', 'Light Installation', 'Fan Repair', 'Circuit Breaker'],
-    cleaning: ['Home Cleaning', 'Office Cleaning', 'Carpet Cleaning', 'Window Cleaning', 'Deep Cleaning'],
-    ac_repair: ['AC Installation', 'AC Gas Filling', 'AC Repair', 'AC Maintenance', 'AC Cleaning'],
-    painting: ['Wall Painting', 'Furniture Painting', 'Exterior Painting', 'Waterproofing', 'Texture Painting'],
-    carpentry: ['Furniture Making', 'Door Repair', 'Window Repair', 'Cupboard Making', 'Wood Polishing'],
-    mechanic: ['Car Repair', 'Bike Repair', 'Engine Service', 'Oil Change', 'Tire Replacement'],
-    gardening: ['Lawn Mowing', 'Tree Trimming', 'Garden Design', 'Planting', 'Irrigation'],
-    construction: ['Renovation', 'Room Addition', 'Kitchen Remodel', 'Bathroom Remodel', 'Tiling']
-  };
-
-  const cities = [
-    'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad',
-    'Multan', 'Peshawar', 'Quetta', 'Gujranwala', 'Sialkot',
-    'Bahawalpur', 'Sargodha', 'Sukkur', 'Larkana', 'Hyderabad',
-    'Abbottabad', 'Mardan', 'Mingora', 'Mirpur', 'Gujrat'
-  ];
-
-  // Sample orders data
-  const [activeOrders, setActiveOrders] = useState([
-    {
-      id: 1,
-      service: 'Bathroom Plumbing',
-      description: 'Leaking tap and drainage issue',
-      date: '2024-01-20',
-      budget: '₹2,500',
-      location: 'Gulshan, Karachi',
-      status: 'Orders Open',
-      Orders: [
-        { 
-          id: 1, 
-          provider: 'John Doe', 
-          providerId: 'provider_001',
-          amount: '₹2,800', 
-          time: '2 days', 
-          rating: 4.8, 
-          contact: '0300-1234567',
-          chatRoomId: 'order_1_provider_001'
-        },
-        { 
-          id: 2, 
-          provider: 'Ali Tech', 
-          providerId: 'provider_002',
-          amount: '₹2,500', 
-          time: '1 day', 
-          rating: 4.5, 
-          contact: '0300-7654321',
-          chatRoomId: 'order_1_provider_002'
-        },
-      ]
-    },
-  ]);
-
-  const [completedOrders, setCompletedOrders] = useState([
-    {
-      id: 3,
-      service: 'Electrical Wiring',
-      provider: 'Tech Masters',
-      date: '2024-01-15',
-      amount: '₹3,500',
-      rating: 5,
-      status: 'Completed',
-      chatRoomId: 'completed_3'
-    },
-  ]);
-
-  // Socket connection
+  // Load customer info
   useEffect(() => {
-    socket.connect();
+    const token = localStorage.getItem('token');
+    const storedUser = localStorage.getItem('user');
     
-    const handleConnect = () => {
-      console.log('Connected to chat server');
+    if (!token || !storedUser) {
+      setError('Please login first');
+      setTimeout(() => navigate('/customer-login'), 2000);
+      return;
+    }
+
+    try {
+      const user = JSON.parse(storedUser);
+      setCustomerInfo(user);
+      console.log('✅ Customer loaded:', user.name);
+    } catch (e) {
+      console.error('Error parsing user:', e);
+    }
+  }, [navigate]);
+
+  // Fetch customer's requests
+  useEffect(() => {
+    if (!customerInfo?.id) return;
+
+    const fetchRequests = async () => {
+      setLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        
+        const response = await fetch(
+          `http://localhost:4000/api/auth/users/${customerInfo.id}/requests`,
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`
+            }
+          }
+        );
+
+        const data = await response.json();
+
+        if (data.success) {
+          setRequests(data.data.requests);
+        } else {
+          setError(data.error || 'Failed to fetch requests');
+        }
+      } catch (err) {
+        console.error('Error fetching requests:', err);
+        setError('Network error. Please try again.');
+      } finally {
+        setLoading(false);
+      }
     };
-    
-    const handleMessage = (data) => {
-      if (currentChat.roomId && data.room === currentChat.roomId) {
-        setMessages(prev => [...prev, {
-          text: data.text,
+
+    fetchRequests();
+
+    // WebSocket listeners for real-time updates
+    const handleRequestAccepted = (data) => {
+      console.log('✅ Request accepted:', data);
+      setRequests(prev => 
+        prev.map(req => 
+          req.id === data.requestId 
+            ? { 
+                ...req, 
+                status: 'accepted',
+                providerName: data.providerName,
+                providerId: data.providerId,
+                acceptedAt: new Date().toISOString()
+              }
+            : req
+        )
+      );
+      showNotification('🎯 Request Accepted!', `${data.providerName} will contact you soon.`);
+    };
+
+    const handleOrderCompleted = (data) => {
+      console.log('✅ Order completed:', data);
+      setRequests(prev => 
+        prev.map(req => 
+          req.id === data.requestId 
+            ? { ...req, status: 'completed', completedAt: new Date().toISOString() }
+            : req
+        )
+      );
+      showNotification('✅ Order Completed!', 'Your service request has been completed.');
+    };
+
+    const handlePaymentConfirmed = (data) => {
+      console.log('💰 Payment confirmed:', data);
+      setRequests(prev => 
+        prev.map(req => 
+          req.id === data.requestId 
+            ? { ...req, paymentStatus: 'paid', paymentId: data.paymentId }
+            : req
+        )
+      );
+      showNotification('💰 Payment Successful!', `Payment of ${formatBudget(data.amount)} has been processed.`);
+    };
+
+    const handleNewMessage = (data) => {
+      console.log('💬 New message:', data);
+      if (data.requestId === selectedRequest?.id) {
+        setChatMessages(prev => [...prev, {
+          id: data.messageId,
+          text: data.message,
           sender: data.sender,
-          senderName: data.senderName || data.sender,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          timestamp: new Date().toISOString()
         }]);
       }
+      showNotification('💬 New Message', `You have a new message from ${data.senderName}`);
     };
-    
-    socket.on('connect', handleConnect);
-    socket.on('message', handleMessage);
-    
+
+    // Register socket listeners
+    socket.on('request_accepted', handleRequestAccepted);
+    socket.on('order_completed', handleOrderCompleted);
+    socket.on('payment_confirmed', handlePaymentConfirmed);
+    socket.on('new_message', handleNewMessage);
+    socket.on('connected', () => setConnected(true));
+    socket.on('disconnected', () => setConnected(false));
+
+    // Connect socket if not connected
+    if (!socket.isConnected()) {
+      socket.connect();
+    }
+
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('message', handleMessage);
+      socket.off('request_accepted', handleRequestAccepted);
+      socket.off('order_completed', handleOrderCompleted);
+      socket.off('payment_confirmed', handlePaymentConfirmed);
+      socket.off('new_message', handleNewMessage);
+      socket.off('connected');
+      socket.off('disconnected');
     };
-  }, [currentChat.roomId]);
+  }, [customerInfo?.id, selectedRequest]);
 
-  // New Request Form Handlers
-  const handleFormChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-    
-    if (formErrors[name]) {
-      setFormErrors(prev => ({
-        ...prev,
-        [name]: ''
-      }));
-    }
-
-    if (name === 'serviceType') {
-      setFormData(prev => ({
-        ...prev,
-        subService: ''
-      }));
+  // Show notification
+  const showNotification = (title, body) => {
+    if (Notification.permission === 'granted') {
+      new Notification(title, { body, icon: '/logo.png' });
     }
   };
 
-  const validateForm = () => {
-    const errors = {};
-    
-    if (!formData.serviceType) errors.serviceType = 'Please select a service type';
-    if (!formData.subService) errors.subService = 'Please select a sub-service';
-    if (!formData.description.trim()) errors.description = 'Please describe your problem';
-    if (formData.description.trim().length < 20) errors.description = 'Description should be at least 20 characters';
-    if (!formData.address.trim()) errors.address = 'Address is required';
-    if (!formData.city) errors.city = 'Please select your city';
-    if (!formData.date) errors.date = 'Please select a date';
-    if (!formData.time) errors.time = 'Please select a time';
-    if (!formData.budget) errors.budget = 'Please enter your budget';
-    if (formData.budget && parseInt(formData.budget) < 500) errors.budget = 'Minimum budget is 500 PKR';
-    
-    setFormErrors(errors);
-    return Object.keys(errors).length === 0;
-  };
-
-  const submitRequest = async (e) => {
-    e.preventDefault();
-    
-    if (!validateForm()) return;
-    
-    setIsSubmitting(true);
-    
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const newOrder = {
-        id: Date.now(),
-        service: `${formData.serviceType} - ${formData.subService}`,
-        description: formData.description,
-        date: formData.date,
-        budget: `₹${formData.budget}`,
-        location: `${formData.address}, ${formData.city}`,
-        status: 'Orders Open',
-        Orders: [],
-        urgency: formData.urgency
-      };
-      
-      setActiveOrders(prev => [newOrder, ...prev]);
-      
-      // Reset form
-      setFormData({
-        serviceType: '',
-        subService: '',
-        description: '',
-        address: '',
-        city: '',
-        date: '',
-        time: '',
-        budget: '',
-        urgency: 'normal',
-        contactPreference: 'phone'
-      });
-      
-      setShowRequestForm(false);
-      setActiveTab('my-orders');
-      
-      alert('Service request posted successfully! Providers will start bidding soon.');
-      
-      // Notify providers via socket
-      if (socket.connected) {
-        socket.emit('new-request', {
-          service: newOrder.service,
-          location: newOrder.location,
-          budget: newOrder.budget,
-          urgency: newOrder.urgency
-        });
-      }
-    } catch (error) {
-      console.error('Error posting request:', error);
-      alert('Failed to post request. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+  // Request notification permission
+  useEffect(() => {
+    if (Notification.permission === 'default') {
+      Notification.requestPermission();
     }
+  }, []);
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-PK', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
-  // Original functions (keep as is)
-  const acceptOrder = (orderId, providerName) => {
-    alert(`Order accepted! ${providerName} will contact you soon.`);
-    
-    setActiveOrders(prev => prev.map(order => {
-      if (order.id === orderId) {
+  // Format budget
+  const formatBudget = (budget) => {
+    if (!budget) return 'N/A';
+    const amount = budget.toString().replace(/[^0-9]/g, '');
+    return `Rs. ${parseInt(amount || 0).toLocaleString()}`;
+  };
+
+  // Get status configuration
+  const getStatusConfig = (status) => {
+    switch(status) {
+      case 'pending':
         return {
-          ...order,
-          status: 'Order Accepted',
-          Orders: order.Orders.map(bid => ({
-            ...bid,
-            status: bid.id === orderId ? 'accepted' : 'rejected'
-          }))
+          color: '#856404',
+          bg: '#fff3cd',
+          icon: <FaClock />,
+          text: 'Looking for providers...',
+          progress: 25,
+          badge: 'Pending'
         };
+      case 'accepted':
+        return {
+          color: '#155724',
+          bg: '#d4edda',
+          icon: <FaCheckCircle />,
+          text: 'Provider assigned',
+          progress: 50,
+          badge: 'In Progress'
+        };
+      case 'in_progress':
+        return {
+          color: '#004085',
+          bg: '#cce5ff',
+          icon: <FaTools />,
+          text: 'Service in progress',
+          progress: 75,
+          badge: 'In Progress'
+        };
+      case 'completed':
+        return {
+          color: '#004085',
+          bg: '#cce5ff',
+          icon: <FaCheckCircle />,
+          text: 'Completed',
+          progress: 100,
+          badge: 'Completed'
+        };
+      case 'rejected':
+        return {
+          color: '#721c24',
+          bg: '#f8d7da',
+          icon: <FaTimesCircle />,
+          text: 'Cancelled',
+          progress: 0,
+          badge: 'Cancelled'
+        };
+      default:
+        return {
+          color: '#6c757d',
+          bg: '#e9ecef',
+          icon: <FaClock />,
+          text: status,
+          progress: 0,
+          badge: status
+        };
+    }
+  };
+
+  // Filter requests by status
+  const filteredRequests = requests.filter(req => {
+    if (activeTab === 'active') return ['pending', 'accepted', 'in_progress'].includes(req.status);
+    if (activeTab === 'completed') return req.status === 'completed';
+    if (activeTab === 'cancelled') return req.status === 'rejected';
+    return true;
+  });
+
+  // Handle rating submission
+  const handleSubmitRating = async () => {
+    if (rating === 0) {
+      alert('Please select a rating');
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:4000/api/requests/${selectedRequest.id}/rate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          rating,
+          review,
+          customerId: customerInfo.id,
+          providerId: selectedRequest.providerId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert('✅ Thank you for your feedback!');
+        setShowRatingModal(false);
+        setRating(0);
+        setReview('');
+        setSelectedRequest(null);
       }
-      return order;
-    }));
-  };
-
-  const openChat = (roomId, providerName, orderId) => {
-    setCurrentChat({ roomId, providerName, orderId });
-    setChatOpen(true);
-    setMessages([]);
-    
-    if (socket.connected) {
-      socket.emit('join-room', roomId);
-      
-      setTimeout(() => {
-        setMessages([
-          { text: `Hello! I'm ${providerName}. I'm interested in your service request.`, sender: 'provider', senderName: providerName, timestamp: '10:30 AM' },
-          { text: 'When would be a good time for me to come?', sender: 'provider', senderName: providerName, timestamp: '10:31 AM' }
-        ]);
-      }, 500);
+    } catch (err) {
+      console.error('Error submitting rating:', err);
+      alert('Failed to submit rating. Please try again.');
     }
   };
 
-  const closeChat = () => {
-    if (currentChat.roomId) {
-      socket.emit('leave-room', currentChat.roomId);
-    }
-    setChatOpen(false);
-    setCurrentChat({ roomId: null, providerName: '' });
-    setMessages([]);
-  };
+  // Handle payment
+  const handlePayment = async (request) => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch('http://localhost:4000/api/payments/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          requestId: request.id,
+          amount: request.budget,
+          customerId: customerInfo.id,
+          providerId: request.providerId
+        })
+      });
 
-  const sendMessage = () => {
-    if (input.trim() && currentChat.roomId && socket.connected) {
-      const messageData = {
-        room: currentChat.roomId,
-        text: input,
-        sender: 'customer',
-        senderName: 'You',
-        timestamp: new Date().toISOString()
-      };
-      
-      setMessages(prev => [...prev, {
-        ...messageData,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
-      
-      socket.emit('send-message', messageData);
-      setInput('');
-    }
-  };
+      const data = await response.json();
 
-  const completeOrder = (orderId) => {
-    const orderToComplete = activeOrders.find(order => order.id === orderId);
-    if (orderToComplete) {
-      const acceptedBid = orderToComplete.Orders.find(bid => bid.status === 'accepted');
-      
-      setCompletedOrders(prev => [{
-        id: orderId,
-        service: orderToComplete.service,
-        provider: acceptedBid?.provider || 'Unknown Provider',
-        date: new Date().toISOString().split('T')[0],
-        amount: acceptedBid?.amount || orderToComplete.budget,
-        rating: 0,
-        status: 'Completed',
-        chatRoomId: `completed_${orderId}`
-      }, ...prev]);
-      
-      setActiveOrders(prev => prev.filter(order => order.id !== orderId));
+      if (data.success) {
+        // In production, redirect to payment gateway
+        alert('💰 Redirecting to payment gateway...');
+        // Simulate payment success
+        setTimeout(() => {
+          socket.send('payment_confirmed', {
+            requestId: request.id,
+            amount: request.budget,
+            paymentId: data.data.paymentId
+          });
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Error processing payment:', err);
+      alert('Payment failed. Please try again.');
     }
   };
 
-  // Stats calculations
-  const totalBids = activeOrders.reduce((total, order) => total + order.Orders.length, 0);
-  const acceptedOrders = activeOrders.filter(o => o.status === 'Order Accepted').length;
+  // Handle chat
+  const openChat = (request) => {
+    setSelectedRequest(request);
+    setShowChat(true);
+    setChatMessages([
+      {
+        id: 1,
+        text: `Hello! I'm ${request.providerName}. I've accepted your request for ${request.title}.`,
+        sender: 'provider',
+        timestamp: request.acceptedAt,
+        senderName: request.providerName
+      }
+    ]);
+  };
+
+  const sendMessage = (message) => {
+    if (!message.trim()) return;
+
+    socket.send('send_message', {
+      requestId: selectedRequest.id,
+      message,
+      sender: 'customer',
+      senderId: customerInfo.id,
+      senderName: customerInfo.name,
+      receiverId: selectedRequest.providerId
+    });
+
+    setChatMessages(prev => [...prev, {
+      id: Date.now(),
+      text: message,
+      sender: 'customer',
+      timestamp: new Date().toISOString(),
+      senderName: customerInfo.name
+    }]);
+  };
+
+  // Download invoice
+  const downloadInvoice = (request) => {
+    const invoice = {
+      invoiceNo: `INV-${request.id}`,
+      date: new Date().toLocaleDateString(),
+      customerName: customerInfo.name,
+      customerPhone: customerInfo.phone,
+      providerName: request.providerName,
+      service: request.title,
+      description: request.description,
+      amount: request.budget,
+      status: 'Paid',
+      paymentMethod: 'JazzCash'
+    };
+
+    // Create downloadable content
+    const content = `
+      ================ DASTAK PK ================
+                 INVOICE
+      ===========================================
+      Invoice No: ${invoice.invoiceNo}
+      Date: ${invoice.date}
+      
+      CUSTOMER DETAILS:
+      -----------------
+      Name: ${invoice.customerName}
+      Phone: ${invoice.customerPhone}
+      
+      PROVIDER DETAILS:
+      -----------------
+      Name: ${invoice.providerName}
+      Service: ${invoice.service}
+      
+      SERVICE DETAILS:
+      -----------------
+      Description: ${invoice.description}
+      Amount: ${invoice.amount}
+      
+      PAYMENT DETAILS:
+      -----------------
+      Status: ${invoice.status}
+      Method: ${invoice.paymentMethod}
+      
+      ===========================================
+      Thank you for using Dastak PK!
+      ===========================================
+    `;
+
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `invoice-${request.id}.txt`;
+    a.click();
+  };
+
+  if (!customerInfo) {
+    return (
+      <div style={{ padding: '50px', textAlign: 'center' }}>
+        <FaSpinner className="spin" style={{ fontSize: '40px', color: '#007bff' }} />
+        <p style={{ marginTop: '20px', color: '#666' }}>Loading...</p>
+      </div>
+    );
+  }
 
   return (
-    <div style={styles.container}>
-      {/* Header with Tabs */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>Customer Portal</h1>
-        <p style={styles.subtitle}>Post service requests and manage your orders</p>
+    <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif', maxWidth: '1200px', margin: '0 auto' }}>
+      {/* Navigation Bar */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        marginBottom: '30px',
+        padding: '15px 20px',
+        backgroundColor: 'white',
+        borderRadius: '10px',
+        boxShadow: '0 2px 10px rgba(0,0,0,0.05)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <Link 
+            to="/"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              backgroundColor: '#6c757d',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              textDecoration: 'none'
+            }}
+          >
+            <FaHome /> Home
+          </Link>
+          
+          <Link 
+            to="/customer-portal"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              textDecoration: 'none'
+            }}
+          >
+            <FaShoppingCart /> Dashboard
+          </Link>
+          
+          <Link 
+            to="/customer-orders"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              backgroundColor: '#17a2b8',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              textDecoration: 'none'
+            }}
+          >
+            <FaBox /> My Orders
+          </Link>
+          
+          <Link 
+            to="/post-request"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 16px',
+              backgroundColor: '#28a745',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              textDecoration: 'none'
+            }}
+          >
+            <FaTools /> Post Request
+          </Link>
+        </div>
         
-        <div style={styles.tabs}>
-          <button 
-            style={{ ...styles.tab, ...(activeTab === 'dashboard' ? styles.activeTab : {}) }}
-            onClick={() => setActiveTab('dashboard')}
-          >
-            Dashboard
-          </button>
-          <button 
-            style={{ ...styles.tab, ...(activeTab === 'post-request' ? styles.activeTab : {}) }}
-            onClick={() => setActiveTab('post-request')}
-          >
-            <FaPlus /> Post New Request
-          </button>
-          <button 
-            style={{ ...styles.tab, ...(activeTab === 'my-orders' ? styles.activeTab : {}) }}
-            onClick={() => setActiveTab('my-orders')}
-          >
-            My Orders ({activeOrders.length})
-          </button>
+        {/* Connection Status */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <span style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '5px',
+            padding: '5px 10px',
+            backgroundColor: socket.isConnected() ? '#d4edda' : '#f8d7da',
+            color: socket.isConnected() ? '#155724' : '#721c24',
+            borderRadius: '20px',
+            fontSize: '12px'
+          }}>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: socket.isConnected() ? '#28a745' : '#dc3545'
+            }} />
+            {socket.isConnected() ? 'Live' : 'Offline'}
+          </span>
+          
+          <span style={{ color: '#666', fontSize: '14px' }}>
+            👤 {customerInfo.name}
+          </span>
         </div>
       </div>
 
-      {/* Dashboard View */}
-      {activeTab === 'dashboard' && (
-        <>
-          {/* Stats */}
-          <div style={styles.statsContainer}>
-            <div style={styles.statCard}>
-              <div style={styles.statNumber}>{activeOrders.length}</div>
-              <div style={styles.statLabel}>Active Orders</div>
-            </div>
-            <div style={styles.statCard}>
-              <div style={styles.statNumber}>{totalBids}</div>
-              <div style={styles.statLabel}>Total Orders</div>
-            </div>
-            <div style={styles.statCard}>
-              <div style={styles.statNumber}>{completedOrders.length}</div>
-              <div style={styles.statLabel}>Completed</div>
-            </div>
-            <div style={styles.statCard}>
-              <div style={styles.statNumber}>{acceptedOrders}</div>
-              <div style={styles.statLabel}>Accepted</div>
-            </div>
-          </div>
+      {/* Page Header */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        marginBottom: '30px'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+          <h1 style={{ margin: 0, fontSize: '32px', color: '#333' }}>My Orders</h1>
+          <span style={{
+            padding: '5px 12px',
+            backgroundColor: '#e3f2fd',
+            color: '#007bff',
+            borderRadius: '20px',
+            fontSize: '14px',
+            fontWeight: 'bold'
+          }}>
+            {requests.length} Total
+          </span>
+        </div>
+      </div>
 
-          {/* Quick Actions */}
-          <div style={styles.quickActions}>
-            <h3 style={styles.sectionTitle}>Quick Actions</h3>
-            <div style={styles.actionButtons}>
-              <button 
-                style={styles.primaryButtonLarge}
-                onClick={() => setActiveTab('post-request')}
-              >
-                <FaPlus /> Post New Service Request
-              </button>
-              <button 
-                style={styles.secondaryButton}
-                onClick={() => setActiveTab('my-orders')}
-              >
-                View My Orders
-              </button>
-            </div>
-          </div>
+      {/* Tabs */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '10px', 
+        marginBottom: '20px',
+        borderBottom: '2px solid #e9ecef',
+        paddingBottom: '10px'
+      }}>
+        <button
+          onClick={() => setActiveTab('active')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: activeTab === 'active' ? '#007bff' : 'transparent',
+            color: activeTab === 'active' ? 'white' : '#6c757d',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'active' ? 'bold' : 'normal'
+          }}
+        >
+          Active Orders ({requests.filter(r => ['pending', 'accepted', 'in_progress'].includes(r.status)).length})
+        </button>
+        <button
+          onClick={() => setActiveTab('completed')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: activeTab === 'completed' ? '#007bff' : 'transparent',
+            color: activeTab === 'completed' ? 'white' : '#6c757d',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'completed' ? 'bold' : 'normal'
+          }}
+        >
+          Completed ({requests.filter(r => r.status === 'completed').length})
+        </button>
+        <button
+          onClick={() => setActiveTab('cancelled')}
+          style={{
+            padding: '10px 20px',
+            backgroundColor: activeTab === 'cancelled' ? '#007bff' : 'transparent',
+            color: activeTab === 'cancelled' ? 'white' : '#6c757d',
+            border: 'none',
+            borderRadius: '5px',
+            cursor: 'pointer',
+            fontWeight: activeTab === 'cancelled' ? 'bold' : 'normal'
+          }}
+        >
+          Cancelled ({requests.filter(r => r.status === 'rejected').length})
+        </button>
+      </div>
 
-          {/* Recent Activity */}
-          <div style={styles.recentActivity}>
-            <h3 style={styles.sectionTitle}>Recent Activity</h3>
-            {activeOrders.slice(0, 3).map(order => (
-              <div key={order.id} style={styles.activityCard}>
-                <div style={styles.activityHeader}>
-                  <h4>{order.service}</h4>
-                  <span style={{
-                    ...styles.statusBadge,
-                    backgroundColor: order.status === 'Orders Open' ? '#d4edda' : '#cce5ff',
-                    color: order.status === 'Orders Open' ? '#155724' : '#004085'
+      {/* Error Message */}
+      {error && (
+        <div style={{
+          backgroundColor: '#f8d7da',
+          color: '#721c24',
+          padding: '15px',
+          borderRadius: '5px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px'
+        }}>
+          <FaExclamationTriangle />
+          {error}
+        </div>
+      )}
+
+      {/* Requests List */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '50px' }}>
+          <FaSpinner className="spin" style={{ fontSize: '40px', color: '#007bff' }} />
+          <p style={{ marginTop: '20px', color: '#666' }}>Loading your orders...</p>
+        </div>
+      ) : filteredRequests.length === 0 ? (
+        <div style={{
+          backgroundColor: 'white',
+          borderRadius: '10px',
+          padding: '60px 20px',
+          textAlign: 'center',
+          boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
+        }}>
+          <FaBox style={{ fontSize: '60px', color: '#6c757d', marginBottom: '20px', opacity: 0.5 }} />
+          <h2 style={{ color: '#333', marginBottom: '10px' }}>No orders found</h2>
+          <p style={{ color: '#666', marginBottom: '30px' }}>
+            {activeTab === 'active' ? "You don't have any active orders." :
+             activeTab === 'completed' ? "You haven't completed any orders yet." :
+             "You don't have any cancelled orders."}
+          </p>
+          <button
+            onClick={() => navigate('/post-request')}
+            style={{
+              padding: '15px 40px',
+              backgroundColor: '#007bff',
+              color: 'white',
+              border: 'none',
+              borderRadius: '5px',
+              cursor: 'pointer',
+              fontSize: '18px',
+              fontWeight: 'bold'
+            }}
+          >
+            Post a Request
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: '20px' }}>
+          {filteredRequests.map((request) => {
+            const status = getStatusConfig(request.status);
+            
+            return (
+              <div
+                key={request.id}
+                style={{
+                  backgroundColor: 'white',
+                  borderRadius: '10px',
+                  padding: '25px',
+                  boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+                  borderLeft: `5px solid ${status.color}`,
+                  position: 'relative'
+                }}
+              >
+                {/* Status Badge */}
+                <span style={{
+                  position: 'absolute',
+                  top: '20px',
+                  right: '20px',
+                  padding: '5px 15px',
+                  backgroundColor: status.bg,
+                  color: status.color,
+                  borderRadius: '20px',
+                  fontSize: '12px',
+                  fontWeight: 'bold'
+                }}>
+                  {status.badge}
+                </span>
+
+                {/* Request Header */}
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'flex-start',
+                  marginBottom: '20px',
+                  paddingRight: '100px'
+                }}>
+                  <div>
+                    <h2 style={{ margin: '0 0 10px 0', color: '#333', fontSize: '20px' }}>
+                      {request.title || request.service}
+                    </h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        color: status.color,
+                        fontSize: '14px'
+                      }}>
+                        {status.icon}
+                        {status.text}
+                      </span>
+                      <span style={{ color: '#666', fontSize: '13px' }}>
+                        <FaClock style={{ marginRight: '5px' }} />
+                        {formatDate(request.createdAt)}
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#28a745' }}>
+                    {formatBudget(request.budget)}
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{
+                    height: '6px',
+                    backgroundColor: '#e9ecef',
+                    borderRadius: '3px',
+                    overflow: 'hidden'
                   }}>
-                    {order.status}
+                    <div style={{
+                      width: `${status.progress}%`,
+                      height: '100%',
+                      backgroundColor: status.color,
+                      transition: 'width 0.3s ease'
+                    }} />
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: '5px',
+                    fontSize: '11px',
+                    color: '#6c757d'
+                  }}>
+                    <span>📝 Posted</span>
+                    <span>🔧 Assigned</span>
+                    <span>⚙️ In Progress</span>
+                    <span>✅ Completed</span>
+                  </div>
+                </div>
+
+                {/* Request Details Grid */}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                  gap: '15px',
+                  marginBottom: '20px',
+                  padding: '15px',
+                  backgroundColor: '#f8f9fa',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <FaMapMarkerAlt style={{ color: '#dc3545' }} />
+                    <div>
+                      <small style={{ color: '#666' }}>Location</small>
+                      <p style={{ margin: 0, fontWeight: '500', fontSize: '14px' }}>{request.location}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <FaCalendarAlt style={{ color: '#007bff' }} />
+                    <div>
+                      <small style={{ color: '#666' }}>Schedule</small>
+                      <p style={{ margin: 0, fontWeight: '500', fontSize: '14px' }}>{request.schedule || 'ASAP'}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <FaPhone style={{ color: '#28a745' }} />
+                    <div>
+                      <small style={{ color: '#666' }}>Contact</small>
+                      <p style={{ margin: 0, fontWeight: '500', fontSize: '14px' }}>{request.contact || 'N/A'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Provider Info & Actions */}
+                {request.status === 'accepted' && request.providerName && (
+                  <div style={{
+                    padding: '15px',
+                    backgroundColor: '#d4edda',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '15px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <div style={{
+                        width: '45px',
+                        height: '45px',
+                        borderRadius: '50%',
+                        backgroundColor: '#28a745',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '22px'
+                      }}>
+                        👨‍🔧
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, color: '#155724', fontSize: '16px' }}>Provider Assigned!</h4>
+                        <p style={{ margin: '5px 0 0 0', color: '#155724', fontSize: '14px' }}>
+                          <strong>{request.providerName}</strong> - ⭐ 4.8 (128 reviews)
+                        </p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => openChat(request)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#007bff',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <FaComments /> Chat
+                      </button>
+                      <button
+                        onClick={() => handlePayment(request)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#28a745',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <FaCreditCard /> Pay Now
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Order Actions */}
+                {request.status === 'completed' && (
+                  <div style={{
+                    padding: '15px',
+                    backgroundColor: '#f8f9fa',
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: '15px'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+                      <div style={{
+                        width: '45px',
+                        height: '45px',
+                        borderRadius: '50%',
+                        backgroundColor: '#6c757d',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '22px'
+                      }}>
+                        👨‍🔧
+                      </div>
+                      <div>
+                        <h4 style={{ margin: 0, color: '#333', fontSize: '16px' }}>Service Completed</h4>
+                        <p style={{ margin: '5px 0 0 0', color: '#666', fontSize: '14px' }}>
+                          Provider: <strong>{request.providerName}</strong>
+                        </p>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <button
+                        onClick={() => {
+                          setSelectedRequest(request);
+                          setShowRatingModal(true);
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#ffc107',
+                          color: '#000',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <FaStar /> Rate Provider
+                      </button>
+                      <button
+                        onClick={() => downloadInvoice(request)}
+                        style={{
+                          padding: '8px 16px',
+                          backgroundColor: '#17a2b8',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '5px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          fontSize: '13px'
+                        }}
+                      >
+                        <FaDownload /> Invoice
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Description */}
+                {request.description && (
+                  <div style={{ marginTop: '10px', color: '#666' }}>
+                    <strong style={{ fontSize: '14px' }}>Description:</strong>
+                    <p style={{ margin: '8px 0 0 0', lineHeight: '1.6', fontSize: '14px' }}>
+                      {request.description}
+                    </p>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Rating Modal */}
+      {showRatingModal && selectedRequest && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '30px',
+            borderRadius: '10px',
+            maxWidth: '400px',
+            width: '90%'
+          }}>
+            <h2 style={{ margin: '0 0 20px 0', color: '#333' }}>Rate Your Provider</h2>
+            <p style={{ color: '#666', marginBottom: '20px' }}>
+              How was your experience with {selectedRequest.providerName}?
+            </p>
+            
+            {/* Star Rating */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', justifyContent: 'center' }}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <FaStar
+                  key={star}
+                  onClick={() => setRating(star)}
+                  style={{
+                    fontSize: '40px',
+                    cursor: 'pointer',
+                    color: star <= rating ? '#ffc107' : '#e9ecef',
+                    transition: 'color 0.2s'
+                  }}
+                />
+              ))}
+            </div>
+            
+            {/* Review Text */}
+            <textarea
+              placeholder="Write your review (optional)"
+              value={review}
+              onChange={(e) => setReview(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px',
+                border: '1px solid #ced4da',
+                borderRadius: '5px',
+                marginBottom: '20px',
+                minHeight: '100px',
+                fontSize: '14px'
+              }}
+            />
+            
+            {/* Buttons */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={handleSubmitRating}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Submit Rating
+              </button>
+              <button
+                onClick={() => {
+                  setShowRatingModal(false);
+                  setRating(0);
+                  setReview('');
+                  setSelectedRequest(null);
+                }}
+                style={{
+                  flex: 1,
+                  padding: '12px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Chat Modal */}
+      {showChat && selectedRequest && (
+        <div style={{
+          position: 'fixed',
+          bottom: '20px',
+          right: '20px',
+          width: '350px',
+          height: '500px',
+          backgroundColor: 'white',
+          borderRadius: '10px',
+          boxShadow: '0 5px 20px rgba(0,0,0,0.2)',
+          display: 'flex',
+          flexDirection: 'column',
+          zIndex: 1000
+        }}>
+          {/* Chat Header */}
+          <div style={{
+            padding: '15px',
+            backgroundColor: '#007bff',
+            color: 'white',
+            borderRadius: '10px 10px 0 0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <FaComments />
+              <span>Chat with {selectedRequest.providerName}</span>
+            </div>
+            <button
+              onClick={() => setShowChat(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'white',
+                cursor: 'pointer',
+                fontSize: '18px'
+              }}
+            >
+              ×
+            </button>
+          </div>
+          
+          {/* Chat Messages */}
+          <div style={{
+            flex: 1,
+            padding: '15px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                style={{
+                  display: 'flex',
+                  justifyContent: msg.sender === 'customer' ? 'flex-end' : 'flex-start',
+                  marginBottom: '10px'
+                }}
+              >
+                <div style={{
+                  maxWidth: '70%',
+                  padding: '10px',
+                  borderRadius: '10px',
+                  backgroundColor: msg.sender === 'customer' ? '#007bff' : '#e9ecef',
+                  color: msg.sender === 'customer' ? 'white' : '#333'
+                }}>
+                  <p style={{ margin: 0, fontSize: '14px' }}>{msg.text}</p>
+                  <span style={{
+                    fontSize: '10px',
+                    opacity: 0.7,
+                    display: 'block',
+                    marginTop: '5px'
+                  }}>
+                    {new Date(msg.timestamp).toLocaleTimeString()}
                   </span>
-                </div>
-                <p style={styles.activityDesc}>{order.description}</p>
-                <div style={styles.activityDetails}>
-                  <span><FaCalendarAlt /> {order.date}</span>
-                  <span><FaRupeeSign /> {order.budget}</span>
-                  <span><FaMapMarkerAlt /> {order.location}</span>
-                </div>
-                <div style={styles.activityActions}>
-                  <button 
-                    style={styles.smallButton}
-                    onClick={() => {
-                      setActiveTab('my-orders');
-                      // Scroll to this order
-                    }}
-                  >
-                    View Details
-                  </button>
-                  {order.Orders.length > 0 && (
-                    <button 
-                      style={{...styles.smallButton, backgroundColor: '#007bff'}}
-                      onClick={() => openChat(order.Orders[0].chatRoomId, order.Orders[0].provider, order.id)}
-                    >
-                      <FaComments /> Chat ({order.Orders.length})
-                    </button>
-                  )}
                 </div>
               </div>
             ))}
           </div>
-        </>
-      )}
-
-      {/* Post Request View */}
-      {activeTab === 'post-request' && (
-        <div style={styles.requestFormContainer}>
-          <div style={styles.formHeader}>
-            <h2><FaTools /> Post New Service Request</h2>
-            <p>Fill in the details below to post your service request</p>
-          </div>
           
-          <form onSubmit={submitRequest} style={styles.form}>
-            {/* Service Selection */}
-            <div style={styles.formSection}>
-              <h3 style={styles.formSectionTitle}>1. Service Details</h3>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Service Type *</label>
-                <select
-                  name="serviceType"
-                  value={formData.serviceType}
-                  onChange={handleFormChange}
-                  style={{...styles.input, ...(formErrors.serviceType ? styles.inputError : {})}}
-                >
-                  <option value="">Select Service Type</option>
-                  {Object.keys(services).map(service => (
-                    <option key={service} value={service}>
-                      {service.split('_').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}
-                    </option>
-                  ))}
-                </select>
-                {formErrors.serviceType && (
-                  <span style={styles.errorText}>{formErrors.serviceType}</span>
-                )}
-              </div>
-              
-              {formData.serviceType && (
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Sub-Service *</label>
-                  <select
-                    name="subService"
-                    value={formData.subService}
-                    onChange={handleFormChange}
-                    style={{...styles.input, ...(formErrors.subService ? styles.inputError : {})}}
-                  >
-                    <option value="">Select Sub-Service</option>
-                    {services[formData.serviceType]?.map(sub => (
-                      <option key={sub} value={sub}>{sub}</option>
-                    ))}
-                  </select>
-                  {formErrors.subService && (
-                    <span style={styles.errorText}>{formErrors.subService}</span>
-                  )}
-                </div>
-              )}
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Description *</label>
-                <textarea
-                  name="description"
-                  value={formData.description}
-                  onChange={handleFormChange}
-                  placeholder="Describe your problem in detail..."
-                  rows={4}
-                  style={{...styles.textarea, ...(formErrors.description ? styles.inputError : {})}}
-                />
-                {formErrors.description && (
-                  <span style={styles.errorText}>{formErrors.description}</span>
-                )}
-                <small style={styles.helpText}>Minimum 20 characters. Be as detailed as possible.</small>
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Urgency Level</label>
-                <div style={styles.radioGroup}>
-                  {['low', 'normal', 'high', 'emergency'].map(level => (
-                    <label key={level} style={styles.radioLabel}>
-                      <input
-                        type="radio"
-                        name="urgency"
-                        value={level}
-                        checked={formData.urgency === level}
-                        onChange={handleFormChange}
-                        style={styles.radio}
-                      />
-                      {level.charAt(0).toUpperCase() + level.slice(1)}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </div>
-            
-            {/* Location Details */}
-            <div style={styles.formSection}>
-              <h3 style={styles.formSectionTitle}>2. Location Details</h3>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Address *</label>
-                <input
-                  type="text"
-                  name="address"
-                  value={formData.address}
-                  onChange={handleFormChange}
-                  placeholder="Enter complete address"
-                  style={{...styles.input, ...(formErrors.address ? styles.inputError : {})}}
-                />
-                {formErrors.address && (
-                  <span style={styles.errorText}>{formErrors.address}</span>
-                )}
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>City *</label>
-                <select
-                  name="city"
-                  value={formData.city}
-                  onChange={handleFormChange}
-                  style={{...styles.input, ...(formErrors.city ? styles.inputError : {})}}
-                >
-                  <option value="">Select City</option>
-                  {cities.map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
-                {formErrors.city && (
-                  <span style={styles.errorText}>{formErrors.city}</span>
-                )}
-              </div>
-            </div>
-            
-            {/* Schedule & Budget */}
-            <div style={styles.formSection}>
-              <h3 style={styles.formSectionTitle}>3. Schedule & Budget</h3>
-              
-              <div style={styles.formRow}>
-                <div style={styles.formGroupHalf}>
-                  <label style={styles.label}>Date *</label>
-                  <input
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleFormChange}
-                    min={new Date().toISOString().split('T')[0]}
-                    style={{...styles.input, ...(formErrors.date ? styles.inputError : {})}}
-                  />
-                  {formErrors.date && (
-                    <span style={styles.errorText}>{formErrors.date}</span>
-                  )}
-                </div>
-                
-                <div style={styles.formGroupHalf}>
-                  <label style={styles.label}>Time *</label>
-                  <input
-                    type="time"
-                    name="time"
-                    value={formData.time}
-                    onChange={handleFormChange}
-                    style={{...styles.input, ...(formErrors.time ? styles.inputError : {})}}
-                  />
-                  {formErrors.time && (
-                    <span style={styles.errorText}>{formErrors.time}</span>
-                  )}
-                </div>
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Budget (PKR) *</label>
-                <div style={styles.budgetInput}>
-                  <span style={styles.currency}>PKR</span>
-                  <input
-                    type="number"
-                    name="budget"
-                    value={formData.budget}
-                    onChange={handleFormChange}
-                    placeholder="Enter your budget"
-                    min="500"
-                    style={{...styles.input, ...styles.budgetField, ...(formErrors.budget ? styles.inputError : {})}}
-                  />
-                </div>
-                {formErrors.budget && (
-                  <span style={styles.errorText}>{formErrors.budget}</span>
-                )}
-                <small style={styles.helpText}>Minimum budget: PKR 500</small>
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Preferred Contact Method</label>
-                <select
-                  name="contactPreference"
-                  value={formData.contactPreference}
-                  onChange={handleFormChange}
-                  style={styles.input}
-                >
-                  <option value="phone">Phone Call</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="message">Message</option>
-                  <option value="any">Any Method</option>
-                </select>
-              </div>
-            </div>
-            
-            {/* Form Actions */}
-            <div style={styles.formActions}>
-              <button
-                type="button"
-                onClick={() => setActiveTab('dashboard')}
-                style={styles.cancelButton}
-                disabled={isSubmitting}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                style={styles.submitButton}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <span>Posting Request...</span>
-                ) : (
-                  <span><FaPaperPlane /> Post Service Request</span>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* My Orders View (Your original tracking interface) */}
-      {activeTab === 'my-orders' && (
-        <>
-          <div style={styles.ordersHeader}>
-            <h2 style={styles.sectionTitle}>My Service Orders</h2>
-            <button 
-              style={styles.primaryButton}
-              onClick={() => setActiveTab('post-request')}
+          {/* Chat Input */}
+          <div style={{
+            padding: '15px',
+            borderTop: '1px solid #dee2e6',
+            display: 'flex',
+            gap: '10px'
+          }}>
+            <input
+              type="text"
+              placeholder="Type your message..."
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  sendMessage(e.target.value);
+                  e.target.value = '';
+                }
+              }}
+              style={{
+                flex: 1,
+                padding: '10px',
+                border: '1px solid #ced4da',
+                borderRadius: '5px',
+                fontSize: '14px'
+              }}
+            />
+            <button
+              onClick={(e) => {
+                const input = e.target.previousSibling;
+                sendMessage(input.value);
+                input.value = '';
+              }}
+              style={{
+                padding: '10px 15px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '5px',
+                cursor: 'pointer'
+              }}
             >
-              <FaPlus /> Post New Request
+              Send
             </button>
           </div>
-          
-          {/* Active Orders */}
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>
-              <FaClock style={styles.sectionIcon} /> Active Orders ({activeOrders.length})
-            </h3>
-            
-            {activeOrders.length === 0 ? (
-              <div style={styles.emptyState}>
-                <p>No active orders. Post a service request to get started!</p>
-                <button 
-                  style={styles.primaryButton}
-                  onClick={() => setActiveTab('post-request')}
-                >
-                  Post New Request
-                </button>
-              </div>
-            ) : (
-              <div style={styles.ordersList}>
-                {activeOrders.map(order => (
-                  <div key={order.id} style={styles.orderCard}>
-                    {/* ... (Keep your existing order card JSX here) */}
-                    {/* Copy the entire order card from your original code */}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-          
-          {/* Completed Orders */}
-          <div style={styles.section}>
-            <h3 style={styles.sectionTitle}>
-              <FaCheckCircle style={styles.sectionIcon} /> Completed Orders ({completedOrders.length})
-            </h3>
-            
-            {completedOrders.length === 0 ? (
-              <div style={styles.emptyState}>
-                <p>No completed orders yet.</p>
-              </div>
-            ) : (
-              <div style={styles.completedList}>
-                {completedOrders.map(order => (
-                  <div key={order.id} style={styles.completedCard}>
-                    {/* ... (Keep your existing completed card JSX here) */}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Chat Modal (Keep as is) */}
-      {chatOpen && (
-        <div style={styles.chatModal}>
-          <div style={styles.chatContainer}>
-            {/* ... (Keep your existing chat modal JSX here) */}
-          </div>
         </div>
       )}
-
-      {/* Socket Status Indicator */}
-      <div style={styles.socketIndicator}>
-        <div style={{
-          ...styles.indicatorDot,
-          backgroundColor: socket.connected ? '#4CAF50' : '#f44336'
-        }}></div>
-        <span>
-          {socket.connected ? 'Live chat & updates connected' : 'Connecting to server...'}
-        </span>
-      </div>
     </div>
   );
 };
 
-// Add these new styles to your existing styles object:
-const styles = {
-  // ... (Keep all your existing styles)
-  
-  // New styles for the portal
-  tabs: {
-    display: 'flex',
-    gap: '10px',
-    marginTop: '20px',
-    borderBottom: '2px solid #eee',
-    paddingBottom: '10px'
-  },
-  tab: {
-    padding: '12px 24px',
-    backgroundColor: '#f8f9fa',
-    border: 'none',
-    borderRadius: '8px 8px 0 0',
-    cursor: 'pointer',
-    fontSize: '16px',
-    fontWeight: '500',
-    color: '#666',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    transition: 'all 0.3s'
-  },
-  activeTab: {
-    backgroundColor: '#007bff',
-    color: 'white',
-    boxShadow: '0 2px 5px rgba(0,123,255,0.3)'
-  },
-  quickActions: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '25px',
-    marginBottom: '30px',
-    boxShadow: '0 2px 15px rgba(0,0,0,0.05)'
-  },
-  actionButtons: {
-    display: 'flex',
-    gap: '15px',
-    flexWrap: 'wrap'
-  },
-  secondaryButton: {
-    padding: '15px 25px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    cursor: 'pointer',
-    fontWeight: '500',
-    transition: 'background-color 0.3s'
-  },
-  recentActivity: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '25px',
-    boxShadow: '0 2px 15px rgba(0,0,0,0.05)'
-  },
-  activityCard: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: '8px',
-    padding: '20px',
-    marginBottom: '15px',
-    borderLeft: '4px solid #007bff'
-  },
-  activityHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '10px'
-  },
-  activityDesc: {
-    color: '#666',
-    marginBottom: '15px',
-    fontSize: '14px'
-  },
-  activityDetails: {
-    display: 'flex',
-    gap: '20px',
-    marginBottom: '15px',
-    fontSize: '13px',
-    color: '#888'
-  },
-  activityActions: {
-    display: 'flex',
-    gap: '10px'
-  },
-  smallButton: {
-    padding: '6px 15px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '13px'
-  },
-  // Form Styles
-  requestFormContainer: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    padding: '30px',
-    boxShadow: '0 2px 20px rgba(0,0,0,0.1)'
-  },
-  formHeader: {
-    marginBottom: '30px',
-    textAlign: 'center'
-  },
-  form: {
-    maxWidth: '800px',
-    margin: '0 auto'
-  },
-  formSection: {
-    marginBottom: '40px',
-    paddingBottom: '30px',
-    borderBottom: '1px solid #eee'
-  },
-  formSectionTitle: {
-    fontSize: '1.3rem',
-    color: '#333',
-    marginBottom: '20px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-  formGroup: {
-    marginBottom: '25px'
-  },
-  formRow: {
-    display: 'flex',
-    gap: '20px',
-    marginBottom: '25px'
-  },
-  formGroupHalf: {
-    flex: 1
-  },
-  label: {
-    display: 'block',
-    marginBottom: '8px',
-    fontWeight: '600',
-    color: '#333',
-    fontSize: '15px'
-  },
-  input: {
-    width: '100%',
-    padding: '12px 15px',
-    border: '2px solid #e0e6ed',
-    borderRadius: '8px',
-    fontSize: '15px',
-    transition: 'all 0.3s',
-    boxSizing: 'border-box'
-  },
-  textarea: {
-    width: '100%',
-    padding: '12px 15px',
-    border: '2px solid #e0e6ed',
-    borderRadius: '8px',
-    fontSize: '15px',
-    transition: 'all 0.3s',
-    resize: 'vertical',
-    fontFamily: 'inherit',
-    boxSizing: 'border-box'
-  },
-  inputError: {
-    borderColor: '#e74c3c',
-    boxShadow: '0 0 0 3px rgba(231, 76, 60, 0.1)'
-  },
-  errorText: {
-    color: '#e74c3c',
-    fontSize: '13px',
-    marginTop: '5px',
-    display: 'block'
-  },
-  helpText: {
-    color: '#7f8c8d',
-    fontSize: '13px',
-    marginTop: '5px',
-    display: 'block'
-  },
-  radioGroup: {
-    display: 'flex',
-    gap: '20px',
-    marginTop: '10px'
-  },
-  radioLabel: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    cursor: 'pointer',
-    color: '#555'
-  },
-  radio: {
-    margin: 0
-  },
-  budgetInput: {
-    display: 'flex',
-    alignItems: 'center'
-  },
-  currency: {
-    backgroundColor: '#f8f9fa',
-    padding: '12px 15px',
-    border: '2px solid #e0e6ed',
-    borderRight: 'none',
-    borderRadius: '8px 0 0 8px',
-    color: '#666',
-    fontWeight: '500'
-  },
-  budgetField: {
-    borderRadius: '0 8px 8px 0'
-  },
-  formActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '15px',
-    marginTop: '40px',
-    paddingTop: '30px',
-    borderTop: '1px solid #eee'
-  },
-  cancelButton: {
-    padding: '12px 30px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    cursor: 'pointer',
-    fontWeight: '500'
-  },
-  submitButton: {
-    padding: '12px 30px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '8px',
-    fontSize: '16px',
-    cursor: 'pointer',
-    fontWeight: '500',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px',
-    transition: 'background-color 0.3s'
-  },
-  ordersHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '30px'
-  }
-};
-
 export default CustomerOrderTracking;
-

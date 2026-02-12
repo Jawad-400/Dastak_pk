@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import '../styles.css';
 import { useNavigate } from 'react-router-dom';
 import { 
-  FaTools, FaMapMarkerAlt, FaCalendarAlt, 
-  FaPhone, FaArrowLeft,
-  FaCheckCircle, FaUser, FaBullhorn,
-  FaSpinner, FaExclamationTriangle,
-  FaPen,
-  FaMoneyBill
+  FaWrench, FaMapMarkerAlt, FaCalendarAlt, 
+  FaPhone, FaArrowLeft, FaCheckCircle, 
+  FaUser, FaBullhorn, FaSpinner, 
+  FaExclamationTriangle, FaPen, FaMoneyBillWave,
+  FaBox, FaBolt, FaSnowflake, FaHammer,
+  FaPaintBrush, FaBroom, FaTv, FaBug,
+  FaWifi, FaPlug, FaTools, FaHome, FaSignInAlt
 } from 'react-icons/fa';
 import { socket } from '../Services/socket';
 
@@ -18,7 +18,6 @@ const PostRequest = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [requestId, setRequestId] = useState('');
-  const [debugLogs, setDebugLogs] = useState([]);
   const [socketConnected, setSocketConnected] = useState(false);
   const [user, setUser] = useState(null);
   const [token, setToken] = useState('');
@@ -33,29 +32,17 @@ const PostRequest = () => {
   });
 
   const serviceCategories = [
-    { id: 1, name: 'Plumbing', value: 'plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets, Drainage' },
-    { id: 2, name: 'Electrical', value: 'electrical', icon: '🔌', description: 'Wiring, Switches, Fixtures, Lights' },
-    { id: 3, name: 'AC Repair', value: 'ac_repair', icon: '❄️', description: 'AC Servicing, Gas Filling, Cooling Issues' },
-    { id: 4, name: 'Carpentry', value: 'carpentry', icon: '🔨', description: 'Furniture, Doors, Cabinets, Repairing' },
-    { id: 5, name: 'Painting', value: 'painting', icon: '🎨', description: 'Home Painting, Wall Repair, Wall Paneling' },
-    { id: 6, name: 'Cleaning', value: 'cleaning', icon: '🧹', description: 'Home, Office, Deep Cleaning' },
-    { id: 7, name: 'Appliance Repair', value: 'appliance_repair', icon: '🔧', description: 'Washing Machine, Fridge, LCD, Oven' },
-    { id: 8, name: 'Pest Control', value: 'pest_control', icon: '🐜', description: 'Termite, Cockroach, Mosquito' },
+    { id: 1, name: 'Plumbing', value: 'plumbing', icon: <FaWrench />, color: '#007bff', description: 'Pipes, Taps, Toilets, Drainage' },
+    { id: 2, name: 'Electrical', value: 'electrical', icon: <FaBolt />, color: '#ffc107', description: 'Wiring, Switches, Fixtures, Lights' },
+    { id: 3, name: 'AC Repair', value: 'ac_repair', icon: <FaSnowflake />, color: '#17a2b8', description: 'AC Servicing, Gas Filling, Cooling Issues' },
+    { id: 4, name: 'Carpentry', value: 'carpentry', icon: <FaHammer />, color: '#6c5ce7', description: 'Furniture, Doors, Cabinets, Repairing' },
+    { id: 5, name: 'Painting', value: 'painting', icon: <FaPaintBrush />, color: '#e83e8c', description: 'Home Painting, Wall Repair, Wall Paneling' },
+    { id: 6, name: 'Cleaning', value: 'cleaning', icon: <FaBroom />, color: '#20c997', description: 'Home, Office, Deep Cleaning' },
+    { id: 7, name: 'Appliance Repair', value: 'appliance_repair', icon: <FaTv />, color: '#fd7e14', description: 'Washing Machine, Fridge, LCD, Oven' },
+    { id: 8, name: 'Pest Control', value: 'pest_control', icon: <FaBug />, color: '#dc3545', description: 'Termite, Cockroach, Mosquito, Fumigation' },
   ];
 
-  // Add debug log
-  const addDebug = (msg) => {
-    console.log('🔧', msg);
-    setDebugLogs(prev => {
-      const newLogs = [...prev, {
-        time: new Date().toLocaleTimeString(),
-        msg
-      }];
-      return newLogs.slice(-10);
-    });
-  };
-
-  // Load user and token from localStorage
+  // ✅ FIXED: Load user and token from localStorage - NO AUTO REDIRECT!
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
@@ -63,147 +50,25 @@ const PostRequest = () => {
     if (storedToken && storedUser) {
       setToken(storedToken);
       setUser(JSON.parse(storedUser));
-      addDebug('✅ User loaded from localStorage');
     } else {
-      addDebug('❌ No user found - please login first');
       setError('Please login to post a request');
-      setTimeout(() => navigate('/customer-login'), 2000);
+      // ❌ NO AUTO REDIRECT - Let user click the login button
     }
-  }, [navigate]);
+  }, []); // Empty dependency array - runs once on mount
 
-  // Connect WebSocket
+  // WebSocket connection
   useEffect(() => {
-    addDebug('Component mounted, connecting WebSocket...');
-    
-    // Connect socket
     socket.connect();
     
-    // Set up event listeners
-    const handleConnect = () => {
-      addDebug('✅ WebSocket connected');
-      setSocketConnected(true);
-    };
+    const handleConnect = () => setSocketConnected(true);
+    const handleDisconnect = () => setSocketConnected(false);
     
-    const handleDisconnect = () => {
-      addDebug('❌ WebSocket disconnected');
-      setSocketConnected(false);
-    };
-    
-    // Add event listeners
     socket.on('connected', handleConnect);
     socket.on('disconnected', handleDisconnect);
     
-    // Listen for request confirmation from server
     socket.on('request_created', (data) => {
-      addDebug(`✅ Server confirmed request creation: ${JSON.stringify(data)}`);
       if (data.data?.requestId === requestId || data.requestId === requestId) {
         setSuccess(true);
-      }
-    });
-    
-    // Listen for request acceptance by provider
-    socket.on('request_accepted', (data) => {
-      addDebug(`✅ Provider accepted your request: ${JSON.stringify(data)}`);
-      if (data.data?.requestId === requestId || data.requestId === requestId) {
-        alert(`🎉 Your request has been accepted by ${data.data?.providerName || data.providerName}! They will contact you soon.`);
-      }
-    });
-    
-    return () => {
-      // Clean up listeners
-      socket.off('connected', handleConnect);
-      socket.off('disconnected', handleDisconnect);
-      socket.off('request_created');
-      socket.off('request_accepted');
-    };
-  }, [requestId]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    addDebug('=== FORM SUBMIT STARTED ===');
-    
-    // 1. Validate
-    if (!formData.serviceType || !formData.description || !formData.location || !formData.customerName || !formData.contactNumber) {
-      setError('Please fill all required fields (*)');
-      addDebug('Validation failed: Missing fields');
-      return;
-    }
-    
-    if (!token || !user) {
-      setError('Please login first');
-      addDebug('❌ No token or user found');
-      setTimeout(() => navigate('/customer-login'), 2000);
-      return;
-    }
-    
-    setError('');
-    setLoading(true);
-    
-    // 2. Prepare data - FIXED: Use the value from serviceCategories
-    const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    setRequestId(newRequestId);
-    
-    // ✅ FIX: Get the correct service_type value from the category
-    const selectedCategory = serviceCategories.find(c => c.name === formData.serviceType);
-    const serviceTypeValue = selectedCategory ? selectedCategory.value : formData.serviceType.toLowerCase().replace(/\s+/g, '_');
-    
-    addDebug(`✅ Selected service: ${formData.serviceType} -> Mapped to: ${serviceTypeValue}`);
-    
-    const requestData = {
-      title: formData.serviceType,
-      description: formData.description,
-      location: formData.location,
-      budget: formData.budget || 'Negotiable',
-      customerId: user.id.toString(),
-      serviceType: serviceTypeValue,  // ✅ Using correct value from category
-      schedule: formData.schedule,
-      contact: formData.contactNumber
-    };
-    
-    addDebug(`📦 Request data: ${JSON.stringify(requestData, null, 2)}`);
-    
-    try {
-      // ✅ PRIMARY: Send via REST API with Authorization header
-      addDebug('📤 Sending request to REST API...');
-      
-      const response = await fetch('http://localhost:4000/api/requests', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestData)
-      });
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        addDebug(`✅✅✅ Request created via REST API! ID: ${data.data.id || newRequestId}`);
-        addDebug(`🔧 Service type sent: ${serviceTypeValue}`);
-        setRequestId(data.data.id || newRequestId);
-        
-        // ✅ SECONDARY: Also send via WebSocket for real-time updates
-        if (socket && socket.isConnected()) {
-          socket.send('create_request', {
-            id: data.data.id || newRequestId,
-            title: formData.serviceType,
-            description: formData.description,
-            location: formData.location,
-            budget: formData.budget || 'Negotiable',
-            customer_id: user.id.toString(),
-            customer_name: formData.customerName,
-            service_type: serviceTypeValue,  // ✅ Using correct value
-            schedule: formData.schedule,
-            contact_number: formData.contactNumber
-          });
-          addDebug('✅ Request also sent via WebSocket');
-        }
-        
-        // 4. Show success
-        setSuccess(true);
-        setLoading(false);
-        
-        // 5. Clear form after 5 seconds
         setTimeout(() => {
           setFormData({
             serviceType: '',
@@ -216,32 +81,108 @@ const PostRequest = () => {
           });
           setStep(1);
           setSuccess(false);
-          addDebug('Form reset for new request');
         }, 5000);
+      }
+    });
+    
+    socket.on('request_accepted', (data) => {
+      if (data.data?.requestId === requestId || data.requestId === requestId) {
+        alert(`🎉 Your request has been accepted by ${data.data?.providerName || data.providerName}!`);
+      }
+    });
+    
+    return () => {
+      socket.off('connected', handleConnect);
+      socket.off('disconnected', handleDisconnect);
+      socket.off('request_created');
+      socket.off('request_accepted');
+    };
+  }, [requestId]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!formData.serviceType || !formData.description || !formData.location || !formData.customerName || !formData.contactNumber) {
+      setError('Please fill all required fields');
+      return;
+    }
+    
+    if (!token || !user) {
+      setError('Please login first');
+      return;
+    }
+    
+    setError('');
+    setLoading(true);
+    
+    const newRequestId = `req_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    setRequestId(newRequestId);
+    
+    const selectedCategory = serviceCategories.find(c => c.name === formData.serviceType);
+    const serviceTypeValue = selectedCategory ? selectedCategory.value : formData.serviceType.toLowerCase().replace(/\s+/g, '_');
+    
+    const requestData = {
+      title: formData.serviceType,
+      description: formData.description,
+      location: formData.location,
+      budget: formData.budget || 'Negotiable',
+      customerId: user.id.toString(),
+      serviceType: serviceTypeValue,
+      schedule: formData.schedule,
+      contact: formData.contactNumber
+    };
+    
+    try {
+      const response = await fetch('http://localhost:4000/api/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setRequestId(data.data.id || newRequestId);
         
+        if (socket && socket.isConnected()) {
+          socket.send('create_request', {
+            id: data.data.id || newRequestId,
+            title: formData.serviceType,
+            description: formData.description,
+            location: formData.location,
+            budget: formData.budget || 'Negotiable',
+            customer_id: user.id.toString(),
+            customer_name: formData.customerName,
+            service_type: serviceTypeValue,
+            schedule: formData.schedule,
+            contact_number: formData.contactNumber
+          });
+        }
+        
+        setSuccess(true);
+        setLoading(false);
       } else {
-        addDebug(`❌ API Error: ${data.error || 'Unknown error'}`);
         setError(data.error || 'Failed to post request');
         setLoading(false);
       }
       
     } catch (err) {
-      addDebug(`❌ Network Error: ${err.message}`);
       setError('Network error. Please try again.');
       setLoading(false);
-    } finally {
-      addDebug('=== FORM SUBMIT COMPLETED ===');
     }
   };
 
   const handleNext = () => {
     setError('');
     if (step === 1 && (!formData.serviceType || !formData.description)) {
-      setError('Please select service and add description');
+      setError('Please select a service and describe your issue');
       return;
     }
     if (step === 2 && !formData.location) {
-      setError('Please enter location');
+      setError('Please enter your location');
       return;
     }
     if (step < 3) setStep(step + 1);
@@ -252,47 +193,41 @@ const PostRequest = () => {
     if (step > 1) setStep(step - 1);
   };
 
-  // Quick test button - FIXED
-  const quickTest = () => {
-    if (!user) {
-      alert('Please login first');
-      navigate('/customer-login');
-      return;
-    }
-    
-    const electricalCategory = serviceCategories.find(c => c.name === 'Electrical');
-    addDebug(`🧪 Test mode: Will use service value: ${electricalCategory?.value || 'electrical'}`);
-    
-    setFormData({
-      serviceType: 'Electrical',
-      description: 'Fix AC not cooling properly. The AC is running but not cooling. Need immediate repair.',
-      location: 'House No. 123, Street 5, Gulberg, Lahore',
-      schedule: 'today',
-      budget: '2500 PKR',
-      contactNumber: '03001234567',
-      customerName: user.name || 'Test Customer',
-    });
-    setStep(3);
-    setError('');
-  };
-
-  // Manual connect button
-  const manualConnect = () => {
-    addDebug('Manually connecting WebSocket...');
-    socket.connect();
-    setTimeout(() => {
-      setSocketConnected(socket.isConnected());
-      addDebug(socket.isConnected() ? '✅ Manual connect successful' : '❌ Manual connect failed');
-    }, 300);
-  };
-
-  // If no user, show login required
+  // ✅ If not logged in - Show login prompt with buttons, NO AUTO REDIRECT!
   if (!user) {
     return (
-      <div style={styles.container}>
-        <div style={styles.errorBox}>
-          <FaExclamationTriangle style={{marginRight: '10px'}} />
-          Please login to post a request. Redirecting...
+      <div style={styles.loginPromptContainer}>
+        <div style={styles.loginPromptCard}>
+          <div style={styles.loginIcon}>
+            <FaUser size={64} color="#3498db" />
+          </div>
+          <h2 style={styles.loginTitle}>Login Required</h2>
+          <p style={styles.loginMessage}>
+            You need to be logged in to post a service request.
+          </p>
+          <div style={styles.loginButtons}>
+            <button
+              onClick={() => navigate('/customer-login')}
+              style={styles.loginButton}
+            >
+              <FaSignInAlt /> Login Now
+            </button>
+            <button
+              onClick={() => navigate('/')}
+              style={styles.homeButton}
+            >
+              <FaHome /> Go to Home
+            </button>
+          </div>
+          <p style={styles.loginNote}>
+            Don't have an account?{' '}
+            <button
+              onClick={() => navigate('/customer-login')}
+              style={styles.signupLink}
+            >
+              Sign up here
+            </button>
+          </p>
         </div>
       </div>
     );
@@ -300,176 +235,114 @@ const PostRequest = () => {
 
   return (
     <div style={styles.container}>
-      {/* Back Button */}
-      <div style={styles.backButton}>
-        <button onClick={() => navigate('/')} style={styles.backBtn}>
-          <FaArrowLeft /> Back to Home
+      {/* Header Navigation */}
+      <div style={styles.navBar}>
+        <button 
+          onClick={() => navigate('/customer-portal')} 
+          style={styles.navButton}
+        >
+          <FaBox /> My Orders
         </button>
-        <button onClick={quickTest} style={{...styles.backBtn, backgroundColor: '#ffc107', color: '#000', marginLeft: '10px'}}>
-          Fill Test Data
-        </button>
-      </div>
-
-      {/* Header */}
-      <div style={styles.header}>
-        <h1 style={styles.title}>Post a Service Request</h1>
-        <p style={styles.subtitle}>Describe your service need and get Orders from local providers</p>
-      </div>
-
-      {/* User Info */}
-      {user && (
+        
+        {/* Single Connection Status Indicator */}
         <div style={{
-          backgroundColor: '#e3f2fd',
-          padding: '15px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
+          ...styles.connectionBadge,
+          backgroundColor: socketConnected ? '#10b981' : '#ef4444',
         }}>
-          <div>
-            <strong>👤 Logged in as:</strong> {user.name} ({user.phone})
-          </div>
-          <div>
-            <span style={{
-              backgroundColor: token ? '#28a745' : '#dc3545',
-              color: 'white',
-              padding: '5px 10px',
-              borderRadius: '4px',
-              fontSize: '12px'
-            }}>
-              {token ? '✅ Authenticated' : '❌ Not Authenticated'}
-            </span>
-          </div>
+          <span style={styles.connectionDot} />
+          {socketConnected ? 'Live' : 'Offline'}
         </div>
-      )}
-
-      {/* Connection Status */}
-      <div style={{
-        ...styles.connectionStatus,
-        backgroundColor: socketConnected ? '#d4edda' : '#f8d7da',
-        color: socketConnected ? '#155724' : '#721c24',
-        border: socketConnected ? '2px solid #28a745' : '2px solid #dc3545'
-      }}>
-        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px'}}>
-          {socketConnected ? '✅ LIVE CONNECTED' : '❌ OFFLINE'}
-          <button 
-            onClick={manualConnect}
-            style={{padding: '5px 12px', fontSize: '12px', background: '#007bff', color: 'white', border: 'none', borderRadius: '3px'}}
-          >
-            Connect
-          </button>
-        </div>
-        <small style={{display: 'block', marginTop: '5px'}}>
-          {socketConnected 
-            ? '✅ Providers will see your request instantly in real-time' 
-            : '⚠️ WebSocket offline - request will still be saved but not real-time'}
-        </small>
       </div>
 
-      {/* Success Message */}
+      {/* Success Modal */}
       {success && (
-        <div style={styles.successBox}>
-          <FaCheckCircle style={{fontSize: '50px', color: '#28a745', marginBottom: '15px'}} />
-          <h2>🎉 Request Posted Successfully!</h2>
-          <p>Request ID: <strong style={{backgroundColor: '#e9ecef', padding: '5px 10px', borderRadius: '4px'}}>{requestId}</strong></p>
-          <p>✅ Sent to all available providers</p>
-          <p>🔔 You will be notified when a provider accepts</p>
-          <div style={{marginTop: '20px', padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '5px'}}>
-            <span style={{fontSize: '12px', color: '#666'}}>
-              This page will reset in 5 seconds...
-            </span>
+        <div style={styles.successOverlay}>
+          <div style={styles.successCard}>
+            <div style={styles.successIcon}>
+              <FaCheckCircle />
+            </div>
+            <h2 style={styles.successTitle}>Request Posted Successfully!</h2>
+            <p style={styles.successText}>Your request has been sent to nearby providers</p>
+            <div style={styles.requestIdBadge}>
+              #{requestId.slice(-8)}
+            </div>
+            <p style={styles.successNote}>
+              You'll be notified when a provider accepts your request
+            </p>
           </div>
         </div>
       )}
 
-      {/* Error Message */}
-      {error && (
-        <div style={styles.errorBox}>
-          <FaExclamationTriangle style={{marginRight: '10px'}} />
-          {error}
-        </div>
-      )}
-
-      {/* Debug Panel */}
-      <div style={styles.debugPanel}>
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px'}}>
-          <strong>Debug Console</strong>
-          <div>
-            <button 
-              onClick={() => setDebugLogs([])}
-              style={{...styles.smallBtn, backgroundColor: '#6c757d'}}
-            >
-              Clear Logs
-            </button>
-          </div>
-        </div>
-        <div style={styles.logsBox}>
-          {debugLogs.length === 0 ? (
-            <div style={{color: '#999', fontStyle: 'italic'}}>No debug logs yet. Submit form to see logs.</div>
-          ) : (
-            debugLogs.map((log, idx) => (
-              <div key={idx} style={styles.logLine}>
-                <span style={{color: '#666', fontFamily: 'monospace', fontSize: '11px'}}>[{log.time}]</span>
-                <span style={{marginLeft: '10px', fontFamily: 'monospace', fontSize: '12px'}}>{log.msg}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Main Form */}
+      {/* Main Content */}
       {!success && (
         <>
+          {/* Page Header */}
+          <div style={styles.pageHeader}>
+            <h1 style={styles.pageTitle}>Post a Service Request</h1>
+            <p style={styles.pageSubtitle}>
+              {step === 1 && "Select the service you need"}
+              {step === 2 && "Tell us where and when"}
+              {step === 3 && "Almost done! Confirm your details"}
+            </p>
+          </div>
+
           {/* Progress Bar */}
-          <div style={styles.progressContainer}>
+          <div style={styles.progressWrapper}>
             <div style={styles.progressBar}>
-              <div style={{...styles.progressFill, width: `${(step/3)*100}%`}}></div>
+              <div style={{...styles.progressFill, width: `${(step/3)*100}%`}} />
             </div>
             <div style={styles.progressSteps}>
-              <div style={step >= 1 ? styles.activeStep : styles.step}>1. Service</div>
-              <div style={step >= 2 ? styles.activeStep : styles.step}>2. Location</div>
-              <div style={step >= 3 ? styles.activeStep : styles.step}>3. Contact</div>
+              <span style={step >= 1 ? styles.stepActive : styles.stepInactive}>1. Service</span>
+              <span style={step >= 2 ? styles.stepActive : styles.stepInactive}>2. Location</span>
+              <span style={step >= 3 ? styles.stepActive : styles.stepInactive}>3. Contact</span>
             </div>
           </div>
 
+          {/* Error Message */}
+          {error && (
+            <div style={styles.errorAlert}>
+              <FaExclamationTriangle />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Form */}
           <form onSubmit={handleSubmit} style={styles.form}>
-            {/* Step 1: Service Details */}
+            {/* Step 1: Service Selection */}
             {step === 1 && (
               <div style={styles.stepContainer}>
-                <h2 style={styles.stepTitle}>
-                  <FaTools style={styles.stepIcon} /> What Service do you need?
-                </h2>
-                
-                <div style={styles.categoriesGrid}>
+                <div style={styles.servicesGrid}>
                   {serviceCategories.map(category => (
                     <div
                       key={category.id}
+                      onClick={() => setFormData({...formData, serviceType: category.name})}
                       style={{
-                        ...styles.categoryCard,
-                        border: formData.serviceType === category.name ? '3px solid #007bff' : '2px solid #ddd',
-                        backgroundColor: formData.serviceType === category.name ? '#f0f8ff' : 'white'
-                      }}
-                      onClick={() => {
-                        setFormData({...formData, serviceType: category.name});
-                        addDebug(`Selected service: ${category.name} -> value: ${category.value}`);
+                        ...styles.serviceCard,
+                        border: formData.serviceType === category.name 
+                          ? `2px solid ${category.color}` 
+                          : '2px solid transparent',
+                        background: formData.serviceType === category.name 
+                          ? `linear-gradient(145deg, ${category.color}10, white)` 
+                          : 'white',
                       }}
                     >
-                      <div style={styles.categoryIcon}>{category.icon}</div>
-                      <h4 style={styles.categoryName}>{category.name}</h4>
-                      <p style={styles.categoryDesc}>{category.description}</p>
+                      <div style={{...styles.serviceIcon, color: category.color}}>
+                        {category.icon}
+                      </div>
+                      <h3 style={styles.serviceName}>{category.name}</h3>
+                      <p style={styles.serviceDesc}>{category.description}</p>
                     </div>
                   ))}
                 </div>
 
                 <div style={styles.formGroup}>
                   <label style={styles.label}>
-                    <FaPen /> Service Description *
+                    <FaPen style={styles.labelIcon} /> Describe your issue in detail
                   </label>
                   <textarea
                     style={styles.textarea}
-                    placeholder="Describe what you need in detail. Be specific about the problem, location in your house, and any special requirements..."
-                    rows="6"
+                    placeholder="Example: My kitchen sink is leaking water. The pipe under the sink needs replacement. I need this fixed urgently."
+                    rows={5}
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
                     required
@@ -477,8 +350,12 @@ const PostRequest = () => {
                 </div>
 
                 <div style={styles.buttonGroup}>
-                  <button type="button" style={styles.nextBtn} onClick={handleNext}>
-                    Next: Location & Schedule →
+                  <button 
+                    type="button" 
+                    style={styles.primaryButton} 
+                    onClick={handleNext}
+                  >
+                    Continue to Location
                   </button>
                 </div>
               </div>
@@ -487,28 +364,24 @@ const PostRequest = () => {
             {/* Step 2: Location & Schedule */}
             {step === 2 && (
               <div style={styles.stepContainer}>
-                <h2 style={styles.stepTitle}>
-                  <FaMapMarkerAlt style={styles.stepIcon} /> Where and when ?
-                </h2>
-
                 <div style={styles.formGroup}>
                   <label style={styles.label}>
-                    <FaMapMarkerAlt /> Service Location *
+                    <FaMapMarkerAlt style={styles.labelIcon} /> Service Location
                   </label>
                   <input
                     type="text"
                     style={styles.input}
-                    placeholder="Enter complete address with street, area, city, and landmarks"
+                    placeholder="House/Street number, Area, City, Landmarks"
                     value={formData.location}
                     onChange={(e) => setFormData({...formData, location: e.target.value})}
                     required
                   />
                 </div>
 
-                <div style={styles.formRow}>
+                <div style={styles.row}>
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaCalendarAlt /> Schedule *
+                      <FaCalendarAlt style={styles.labelIcon} /> Preferred Schedule
                     </label>
                     <select
                       style={styles.select}
@@ -519,20 +392,18 @@ const PostRequest = () => {
                       <option value="ASAP">As soon as possible</option>
                       <option value="today">Today</option>
                       <option value="tomorrow">Tomorrow</option>
-                      <option value="this-week">This Week</option>
-                      <option value="next-week">Next Week</option>
-                      <option value="weekend">Weekend</option>
+                      <option value="weekend">This Weekend</option>
                     </select>
                   </div>
 
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaMoneyBill /> Budget
+                      <FaMoneyBillWave style={styles.labelIcon} /> Budget (Optional)
                     </label>
                     <input
                       type="text"
                       style={styles.input}
-                      placeholder="e.g., 2,000 PKR (Optional)"
+                      placeholder="e.g., 2000"
                       value={formData.budget}
                       onChange={(e) => setFormData({...formData, budget: e.target.value})}
                     />
@@ -540,11 +411,11 @@ const PostRequest = () => {
                 </div>
 
                 <div style={styles.buttonGroup}>
-                  <button type="button" style={styles.prevBtn} onClick={handlePrev}>
+                  <button type="button" style={styles.secondaryButton} onClick={handlePrev}>
                     ← Back
                   </button>
-                  <button type="button" style={styles.nextBtn} onClick={handleNext}>
-                    Next: Contact Info →
+                  <button type="button" style={styles.primaryButton} onClick={handleNext}>
+                    Continue to Contact
                   </button>
                 </div>
               </div>
@@ -553,19 +424,15 @@ const PostRequest = () => {
             {/* Step 3: Contact Information */}
             {step === 3 && (
               <div style={styles.stepContainer}>
-                <h2 style={styles.stepTitle}>
-                  <FaUser style={styles.stepIcon} /> Contact Information
-                </h2>
-
-                <div style={styles.formRow}>
+                <div style={styles.row}>
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaUser /> Your Name *
+                      <FaUser style={styles.labelIcon} /> Your Full Name
                     </label>
                     <input
                       type="text"
                       style={styles.input}
-                      placeholder="Your full name"
+                      placeholder="Asad Khan"
                       value={formData.customerName}
                       onChange={(e) => setFormData({...formData, customerName: e.target.value})}
                       required
@@ -574,12 +441,12 @@ const PostRequest = () => {
 
                   <div style={styles.formGroupHalf}>
                     <label style={styles.label}>
-                      <FaPhone /> Contact Number *
+                      <FaPhone style={styles.labelIcon} /> Contact Number
                     </label>
                     <input
                       type="tel"
                       style={styles.input}
-                      placeholder="03XX XXXXXXX"
+                      placeholder="03XX-XXXXXXX"
                       value={formData.contactNumber}
                       onChange={(e) => setFormData({...formData, contactNumber: e.target.value})}
                       required
@@ -587,58 +454,51 @@ const PostRequest = () => {
                   </div>
                 </div>
 
-                {/* Summary */}
-                <div style={styles.summaryBox}>
-                  <h3 style={styles.summaryTitle}>Request Summary</h3>
-                  <div style={styles.summaryItem}>
-                    <strong>Service:</strong> {formData.serviceType}
+                {/* Order Summary Card */}
+                <div style={styles.summaryCard}>
+                  <h3 style={styles.summaryTitle}>Order Summary</h3>
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>Service</span>
+                    <span style={styles.summaryValue}>{formData.serviceType}</span>
                   </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Description:</strong> {formData.description.substring(0, 50)}...
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>Location</span>
+                    <span style={styles.summaryValue}>{formData.location}</span>
                   </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Location:</strong> {formData.location}
+                  <div style={styles.summaryRow}>
+                    <span style={styles.summaryLabel}>Schedule</span>
+                    <span style={styles.summaryValue}>{formData.schedule}</span>
                   </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Schedule:</strong> {formData.schedule}
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Budget:</strong> {formData.budget || 'Negotiable'}
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Customer:</strong> {formData.customerName}
-                  </div>
-                  <div style={styles.summaryItem}>
-                    <strong>Contact:</strong> {formData.contactNumber}
-                  </div>
-                </div>
-
-                <div style={{textAlign: 'center', margin: '20px 0'}}>
-                  <div style={{fontSize: '14px', color: '#666', marginBottom: '10px'}}>
-                    {socketConnected 
-                      ? '✅ Your request will be sent to providers instantly in real-time' 
-                      : '⚠️ WebSocket offline - request will still be saved'}
-                  </div>
+                  {formData.budget && (
+                    <div style={styles.summaryRow}>
+                      <span style={styles.summaryLabel}>Budget</span>
+                      <span style={styles.summaryValue}>Rs. {formData.budget}</span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={styles.buttonGroup}>
-                  <button type="button" style={styles.prevBtn} onClick={handlePrev}>
+                  <button type="button" style={styles.secondaryButton} onClick={handlePrev}>
                     ← Back
                   </button>
                   <button 
                     type="submit" 
-                    style={styles.submitBtn}
+                    style={{
+                      ...styles.primaryButton,
+                      ...styles.submitButton,
+                      opacity: loading ? 0.7 : 1,
+                    }}
                     disabled={loading}
                   >
                     {loading ? (
                       <>
-                        <FaSpinner className="spin" style={{marginRight: '8px'}} />
+                        <FaSpinner className="spin" style={{ marginRight: '8px' }} />
                         Posting...
                       </>
                     ) : (
                       <>
-                        <FaBullhorn style={{marginRight: '8px'}} />
-                        Post Request & Get Orders
+                        <FaBullhorn style={{ marginRight: '8px' }} />
+                        Post Request
                       </>
                     )}
                   </button>
@@ -648,322 +508,450 @@ const PostRequest = () => {
           </form>
         </>
       )}
+
+      {/* Spin Animation */}
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        .spin {
+          animation: spin 1s linear infinite;
+          display: inline-block;
+        }
+      `}</style>
     </div>
   );
 };
 
-// ==================== STYLES ====================
 const styles = {
   container: {
     maxWidth: '1200px',
     margin: '0 auto',
-    padding: '20px',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
+    padding: '30px 20px',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    backgroundColor: '#f8fafc',
+    minHeight: '100vh',
   },
-  backButton: {
-    marginBottom: '20px',
+  loadingContainer: {
     display: 'flex',
-    alignItems: 'center'
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    backgroundColor: '#f8fafc',
   },
-  backBtn: {
+  // ✅ NEW STYLES FOR LOGIN PROMPT
+  loginPromptContainer: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: '100vh',
+    backgroundColor: '#f8fafc',
+    padding: '20px',
+  },
+  loginPromptCard: {
+    backgroundColor: 'white',
+    borderRadius: '24px',
+    padding: '48px',
+    textAlign: 'center',
+    maxWidth: '500px',
+    width: '100%',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.08)',
+    border: '1px solid #e2e8f0',
+  },
+  loginIcon: {
+    marginBottom: '24px',
+  },
+  loginTitle: {
+    fontSize: '28px',
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: '12px',
+  },
+  loginMessage: {
+    fontSize: '16px',
+    color: '#64748b',
+    marginBottom: '32px',
+    lineHeight: '1.6',
+  },
+  loginButtons: {
+    display: 'flex',
+    gap: '16px',
+    marginBottom: '24px',
+  },
+  loginButton: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '14px 24px',
+    backgroundColor: '#3498db',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    boxShadow: '0 4px 12px rgba(52,152,219,0.3)',
+  },
+  homeButton: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '8px',
+    padding: '14px 24px',
+    backgroundColor: 'white',
+    color: '#475569',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  loginNote: {
+    fontSize: '14px',
+    color: '#64748b',
+    margin: 0,
+  },
+  signupLink: {
+    background: 'none',
+    border: 'none',
+    color: '#3498db',
+    fontWeight: '600',
+    cursor: 'pointer',
+    textDecoration: 'underline',
+    fontSize: '14px',
+  },
+  navBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '40px',
+  },
+  navButton: {
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '10px 20px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
+    padding: '12px 24px',
+    backgroundColor: 'white',
+    color: '#1e293b',
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '15px',
+    fontWeight: '600',
     cursor: 'pointer',
-    fontSize: '16px',
-    transition: 'all 0.2s ease'
+    transition: 'all 0.2s',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.02)',
   },
-  connectionStatus: {
-    padding: '15px',
-    borderRadius: '8px',
-    marginBottom: '20px',
-    textAlign: 'center',
-    fontWeight: 'bold',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-  },
-  header: {
-    textAlign: 'center',
-    marginBottom: '30px'
-  },
-  title: {
-    fontSize: '36px',
-    color: '#333',
-    marginBottom: '10px',
-    fontWeight: '700'
-  },
-  subtitle: {
-    fontSize: '18px',
-    color: '#666',
-    maxWidth: '600px',
-    margin: '0 auto'
-  },
-  successBox: {
-    backgroundColor: '#d4edda',
-    color: '#155724',
-    padding: '30px',
-    borderRadius: '10px',
-    textAlign: 'center',
-    marginBottom: '30px',
-    border: '2px solid #c3e6cb',
-    boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
-  },
-  errorBox: {
-    backgroundColor: '#f8d7da',
-    color: '#721c24',
-    padding: '15px',
-    borderRadius: '5px',
-    marginBottom: '20px',
+  connectionBadge: {
     display: 'flex',
     alignItems: 'center',
-    borderLeft: '4px solid #dc3545'
-  },
-  debugPanel: {
-    backgroundColor: '#f8f9fa',
-    border: '1px solid #dee2e6',
-    borderRadius: '8px',
-    padding: '15px',
-    marginBottom: '20px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-  },
-  logsBox: {
-    maxHeight: '150px',
-    overflowY: 'auto',
-    backgroundColor: '#fff',
-    padding: '10px',
-    borderRadius: '5px',
-    fontSize: '12px',
-    fontFamily: 'monospace',
-    border: '1px solid #e9ecef'
-  },
-  logLine: {
-    marginBottom: '5px',
-    paddingBottom: '5px',
-    borderBottom: '1px solid #eee',
-    display: 'flex',
-    alignItems: 'flex-start'
-  },
-  smallBtn: {
-    padding: '5px 12px',
+    gap: '8px',
+    padding: '8px 16px',
+    borderRadius: '30px',
     color: 'white',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontSize: '12px',
-    fontWeight: 'bold',
-    transition: 'all 0.2s ease'
+    fontSize: '14px',
+    fontWeight: '600',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
   },
-  progressContainer: {
-    marginBottom: '30px'
+  connectionDot: {
+    width: '8px',
+    height: '8px',
+    borderRadius: '50%',
+    backgroundColor: 'white',
+    animation: 'pulse 2s infinite',
+  },
+  pageHeader: {
+    textAlign: 'center',
+    marginBottom: '40px',
+  },
+  pageTitle: {
+    fontSize: '36px',
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: '8px',
+  },
+  pageSubtitle: {
+    fontSize: '18px',
+    color: '#64748b',
+  },
+  progressWrapper: {
+    marginBottom: '40px',
+    maxWidth: '600px',
+    margin: '0 auto 40px',
   },
   progressBar: {
-    height: '8px',
-    backgroundColor: '#e9ecef',
-    borderRadius: '4px',
-    marginBottom: '10px',
-    overflow: 'hidden'
+    height: '6px',
+    backgroundColor: '#e2e8f0',
+    borderRadius: '3px',
+    marginBottom: '12px',
+    overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    backgroundColor: '#007bff',
+    backgroundColor: '#3b82f6',
     transition: 'width 0.3s ease',
-    borderRadius: '4px'
+    borderRadius: '3px',
   },
   progressSteps: {
     display: 'flex',
     justifyContent: 'space-between',
     fontSize: '14px',
-    fontWeight: '500'
+    fontWeight: '500',
   },
-  step: {
-    color: '#adb5bd'
+  stepActive: {
+    color: '#3b82f6',
   },
-  activeStep: {
-    color: '#007bff',
-    fontWeight: 'bold'
+  stepInactive: {
+    color: '#94a3b8',
+  },
+  errorAlert: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '12px',
+    backgroundColor: '#fef2f2',
+    color: '#dc2626',
+    padding: '16px 20px',
+    borderRadius: '12px',
+    marginBottom: '30px',
+    border: '1px solid #fee2e2',
+    fontSize: '15px',
   },
   form: {
     backgroundColor: 'white',
-    borderRadius: '10px',
-    padding: '30px',
-    boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
-    marginBottom: '40px'
+    borderRadius: '24px',
+    padding: '40px',
+    boxShadow: '0 20px 40px rgba(0,0,0,0.02)',
+    border: '1px solid #f1f5f9',
   },
   stepContainer: {
     maxWidth: '800px',
-    margin: '0 auto'
+    margin: '0 auto',
   },
-  stepTitle: {
-    fontSize: '24px',
-    color: '#333',
-    marginBottom: '25px',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '10px'
-  },
-  stepIcon: {
-    color: '#007bff'
-  },
-  categoriesGrid: {
+  servicesGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-    gap: '15px',
-    marginBottom: '25px'
+    gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
+    gap: '20px',
+    marginBottom: '30px',
   },
-  categoryCard: {
-    borderRadius: '8px',
-    padding: '15px',
-    textAlign: 'center',
+  serviceCard: {
+    padding: '24px',
+    borderRadius: '16px',
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.05)'
+    transition: 'all 0.2s',
+    backgroundColor: 'white',
+    boxShadow: '0 4px 12px rgba(0,0,0,0.02)',
+    border: '2px solid transparent',
   },
-  categoryIcon: {
-    fontSize: '30px',
-    marginBottom: '10px'
+  serviceIcon: {
+    fontSize: '32px',
+    marginBottom: '16px',
   },
-  categoryName: {
-    margin: '0 0 5px 0',
-    fontSize: '16px',
-    color: '#333',
-    fontWeight: '600'
+  serviceName: {
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: '8px',
   },
-  categoryDesc: {
-    fontSize: '11px',
-    color: '#666',
+  serviceDesc: {
+    fontSize: '13px',
+    color: '#64748b',
+    lineHeight: '1.5',
     margin: 0,
-    lineHeight: '1.4'
   },
   formGroup: {
-    marginBottom: '25px'
+    marginBottom: '25px',
   },
   formGroupHalf: {
-    flex: 1
+    flex: 1,
   },
-  formRow: {
+  row: {
     display: 'flex',
     gap: '20px',
-    marginBottom: '25px'
+    marginBottom: '25px',
   },
   label: {
-    marginBottom: '8px',
-    fontWeight: '600',
-    color: '#495057',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    fontSize: '15px'
+    marginBottom: '10px',
+    fontWeight: '600',
+    color: '#334155',
+    fontSize: '15px',
+  },
+  labelIcon: {
+    color: '#3b82f6',
+    fontSize: '16px',
   },
   input: {
     width: '100%',
-    padding: '14px',
-    border: '1px solid #ced4da',
-    borderRadius: '6px',
-    fontSize: '16px',
-    transition: 'all 0.2s ease'
+    padding: '14px 16px',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '15px',
+    transition: 'all 0.2s',
+    backgroundColor: '#f8fafc',
   },
   textarea: {
     width: '100%',
-    padding: '14px',
-    border: '1px solid #ced4da',
-    borderRadius: '6px',
-    fontSize: '16px',
+    padding: '14px 16px',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '15px',
     fontFamily: 'inherit',
     resize: 'vertical',
-    minHeight: '120px',
-    lineHeight: '1.5',
-    transition: 'all 0.2s ease'
+    backgroundColor: '#f8fafc',
+    transition: 'all 0.2s',
   },
   select: {
     width: '100%',
-    padding: '14px',
-    border: '1px solid #ced4da',
-    borderRadius: '6px',
-    fontSize: '16px',
-    backgroundColor: 'white',
-    transition: 'all 0.2s ease',
-    cursor: 'pointer'
+    padding: '14px 16px',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '15px',
+    backgroundColor: '#f8fafc',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
   },
   buttonGroup: {
     display: 'flex',
-    justifyContent: 'space-between',
-    marginTop: '30px'
+    justifyContent: 'flex-end',
+    gap: '16px',
+    marginTop: '30px',
   },
-  prevBtn: {
-    padding: '14px 30px',
-    backgroundColor: '#6c757d',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    transition: 'all 0.2s ease'
-  },
-  nextBtn: {
-    padding: '14px 30px',
-    backgroundColor: '#007bff',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '16px',
-    fontWeight: 'bold',
-    transition: 'all 0.2s ease'
-  },
-  submitBtn: {
-    padding: '16px 45px',
-    backgroundColor: '#28a745',
-    color: 'white',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '18px',
-    fontWeight: 'bold',
+  primaryButton: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    transition: 'all 0.2s ease',
-    boxShadow: '0 4px 6px rgba(40,167,69,0.3)'
+    padding: '14px 32px',
+    backgroundColor: '#3b82f6',
+    color: 'white',
+    border: 'none',
+    borderRadius: '12px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    boxShadow: '0 4px 12px rgba(59,130,246,0.3)',
   },
-  summaryBox: {
-    backgroundColor: '#f8f9fa',
-    padding: '20px',
-    borderRadius: '8px',
+  secondaryButton: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '14px 32px',
+    backgroundColor: 'white',
+    color: '#475569',
+    border: '2px solid #e2e8f0',
+    borderRadius: '12px',
+    fontSize: '16px',
+    fontWeight: '600',
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+  },
+  submitButton: {
+    backgroundColor: '#10b981',
+    boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
+  },
+  summaryCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: '16px',
+    padding: '24px',
     marginBottom: '25px',
-    borderLeft: '4px solid #007bff'
+    border: '1px solid #e2e8f0',
   },
   summaryTitle: {
-    marginTop: 0,
-    marginBottom: '15px',
-    color: '#495057',
-    fontSize: '18px'
+    fontSize: '18px',
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: '16px',
   },
-  summaryItem: {
-    marginBottom: '10px',
-    color: '#6c757d',
-    lineHeight: '1.5'
-  }
+  summaryRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    padding: '12px 0',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  summaryLabel: {
+    color: '#64748b',
+    fontSize: '15px',
+  },
+  summaryValue: {
+    color: '#0f172a',
+    fontWeight: '600',
+    fontSize: '15px',
+  },
+  successOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    backdropFilter: 'blur(4px)',
+  },
+  successCard: {
+    backgroundColor: 'white',
+    borderRadius: '24px',
+    padding: '48px',
+    textAlign: 'center',
+    maxWidth: '500px',
+    width: '90%',
+    boxShadow: '0 25px 50px rgba(0,0,0,0.15)',
+  },
+  successIcon: {
+    fontSize: '64px',
+    color: '#10b981',
+    marginBottom: '24px',
+  },
+  successTitle: {
+    fontSize: '28px',
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: '12px',
+  },
+  successText: {
+    fontSize: '16px',
+    color: '#64748b',
+    marginBottom: '20px',
+  },
+  requestIdBadge: {
+    display: 'inline-block',
+    padding: '8px 20px',
+    backgroundColor: '#f1f5f9',
+    color: '#0f172a',
+    borderRadius: '30px',
+    fontSize: '14px',
+    fontWeight: '600',
+    marginBottom: '20px',
+    fontFamily: 'monospace',
+  },
+  successNote: {
+    fontSize: '14px',
+    color: '#94a3b8',
+    marginTop: '20px',
+  },
 };
 
-// Add spin animation globally
+// Add global pulse animation
 if (typeof document !== 'undefined') {
-  const styleTag = document.createElement('style');
-  styleTag.innerHTML = `
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    .spin {
-      animation: spin 1s linear infinite;
-      display: inline-block;
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
     }
   `;
-  document.head.appendChild(styleTag);
+  document.head.appendChild(style);
 }
 
 export default PostRequest;

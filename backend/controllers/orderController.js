@@ -38,6 +38,59 @@ exports.getRequests = async (req, res) => {
   }
 };
 
+// ==================== COMPLETE REQUEST ====================
+exports.completeRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const db = await mongoDB.connect();
+    const ordersCollection = db.collection('orders');
+
+    const result = await ordersCollection.updateOne(
+      { id },
+      {
+        $set: {
+          status: 'completed',
+          completedAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+
+    const updatedRequest = await ordersCollection.findOne({ id });
+
+    // Broadcast via WebSocket
+    if (global.wss) {
+      global.wss.sendToUser(updatedRequest.customerId, {
+        event: 'order_completed',
+        data: {
+          requestId: id,
+          message: 'Your service request has been marked as completed'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Request completed successfully',
+      data: updatedRequest
+    });
+
+  } catch (error) {
+    console.error('❌ Complete request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
 // ==================== CREATE REQUEST ====================
 exports.createRequest = async (req, res) => {
   try {
