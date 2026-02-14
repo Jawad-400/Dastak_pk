@@ -177,34 +177,48 @@ const ProviderPortal = () => {
   
         // ✅ UPDATE WEBSOCKET AUTHENTICATION
         if (socket && socket.updateAuth) {
+          // 👇 REPLACE THIS WHOLE BLOCK with this:
+          
+          // Disconnect existing connection
+          if (socket.isConnected()) {
+            socket.disconnect();
+          }
+        
           socket.updateAuth({
             id: user.id,
             name: user.name,
-            user_type: 'provider', // ✅ FORCED
+            user_type: 'provider',
             token: token,
             service: user.service || loginData.service || 'all'
           });
+        
+          socket.updateQueryParams({
+            type: 'provider',
+            user_id: user.id,
+            name: user.name,
+            service: user.service || loginData.service || 'all',
+            token: token
+          });
           
-          console.log('🔌 WebSocket auth updated for provider:', user.name);
+          console.log('🔌 Connecting WebSocket for logged in provider:', user.name);
           
-          // ✅ CONNECT WEBSOCKET WITH DELAY
           setTimeout(() => {
-            console.log('🔌 Connecting WebSocket...');
             socket.connect();
             
-            // Verify connection after 1 second
             setTimeout(() => {
               if (socket.isConnected()) {
                 console.log('✅ WebSocket connected successfully');
-                // Request pending requests
-                socket.send('get_pending_requests');
+                socket.send('get_pending_requests', {
+                  provider_id: user.id,
+                  service: user.service || loginData.service
+                });
               } else {
-                console.warn('⚠️ WebSocket connection failed');
+                console.warn('⚠️ WebSocket connection failed, retrying...');
+                socket.connect();
               }
             }, 1000);
           }, 500);
         }
-  
         setLoginSuccess('Login successful! Redirecting to dashboard...');
         
         // Redirect to provider dashboard
@@ -302,7 +316,13 @@ const ProviderPortal = () => {
         hasConnected.current = false;
         connectionInProgress.current = false;
 
-        if (socket && socket.updateAuth) {
+        if (socket) {
+          // Disconnect any existing connection
+          if (socket.isConnected()) {
+            socket.disconnect();
+          }
+      
+          // Update auth with new provider data
           socket.updateAuth({
             id: user.id,
             name: user.name,
@@ -310,26 +330,39 @@ const ProviderPortal = () => {
             token: token,
             service: regData.serviceType
           });
+      
+          socket.updateQueryParams({
+            type: 'provider',
+            user_id: user.id,
+            name: user.name,
+            service: regData.serviceType,
+            token: token
+          });
+      
           console.log('✅ WebSocket auth updated for new provider:', user.name);
           
+          // Connect after a short delay
           setTimeout(() => {
-            if (!connectionInProgress.current && !hasConnected.current) {
-              connectionInProgress.current = true;
-              socket.connect();
-              
-              setTimeout(() => {
-                connectionInProgress.current = false;
-                if (socket.isConnected()) {
-                  hasConnected.current = true;
-                  console.log('✅ WebSocket connected successfully');
-                }
-              }, 1500);
-            }
+            console.log('🔌 Connecting WebSocket for new provider...');
+            socket.connect();
+            
+            // Request pending requests after connection
+            setTimeout(() => {
+              if (socket.isConnected()) {
+                console.log('✅ WebSocket connected, requesting pending requests...');
+                socket.send('get_pending_requests', {
+                  provider_id: user.id,
+                  service: regData.serviceType
+                });
+              } else {
+                console.warn('⚠️ WebSocket connection failed, retrying...');
+                socket.connect();
+              }
+            }, 1000);
           }, 500);
         }
-
+      
         setRegisterSuccess('Registration successful! Redirecting to dashboard...');
-        
         setRegData({
           fullName: '',
           email: '',
