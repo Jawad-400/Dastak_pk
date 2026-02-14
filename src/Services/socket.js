@@ -1,28 +1,35 @@
-﻿// Services/socket.js - COMPLETE FIXED VERSION
+﻿// Services/socket.js - FIXED VERSION
 class WebSocketService {
   constructor() {
     this.socket = null;
     this.connected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
-    this.reconnectDelay = 3000;
+    this.maxReconnectAttempts = 20;
+    this.reconnectDelay = 1000;
     this.url = process.env.REACT_APP_WS_URL || 'ws://localhost:4000/ws';
     
-    // Initialize with stored auth data
     this.initializeAuth();
     
     this.isManualDisconnect = false;
     this.messageQueue = [];
     this.isConnecting = false;
     this.pingInterval = null;
+    this.heartbeatCheck = null;
     this.lastPong = Date.now();
     this.eventListeners = new Map();
-    
-    // ✅ FIX: Add connection lock to prevent multiple connections
     this.connectionLock = false;
+    this.forcedClose = false;
+    
+    // Store last received data for each event type
+    this.lastData = new Map();
+    
+    // Bind methods
+    this.handleOpen = this.handleOpen.bind(this);
+    this.handleMessage = this.handleMessage.bind(this);
+    this.handleClose = this.handleClose.bind(this);
+    this.handleError = this.handleError.bind(this);
   }
 
-  // ========== INITIALIZATION ==========
   initializeAuth() {
     const token = localStorage.getItem('token');
     const storedUser = localStorage.getItem('user');
@@ -45,19 +52,13 @@ class WebSocketService {
     };
   }
 
-  // ========== QUERY PARAMS METHODS ==========
   updateQueryParams(params) {
-    console.log('🔄 Updating WebSocket query params:', params);
     this.queryParams = { ...this.queryParams, ...params };
     return this;
   }
 
-  // ========== AUTHENTICATION METHODS ==========
   updateAuth(userData) {
-    if (!userData) {
-      console.error('❌ No user data provided to updateAuth');
-      return;
-    }
+    if (!userData) return;
 
     const userId = userData.id || userData.userId;
     const userName = userData.name || userData.username;
@@ -65,12 +66,7 @@ class WebSocketService {
     const token = userData.token || localStorage.getItem('token');
     const service = userData.service || '';
 
-    if (!userId || !userRole || !token) {
-      console.error('❌ Missing required auth fields:', { userId, userRole, token });
-      return;
-    }
-
-    console.log('🔐 Updating WebSocket auth:', { userId, userName, userRole });
+    if (!userId || !userRole || !token) return;
 
     this.queryParams = {
       ...this.queryParams,
@@ -91,20 +87,12 @@ class WebSocketService {
     };
     localStorage.setItem('user', JSON.stringify(userForStorage));
 
-    // ✅ FIX: Don't auto-reconnect if already connected/connecting
-    if (this.isConnected()) {
-      console.log('✅ Already connected with valid auth');
-      return;
-    }
-    
-    if (!this.isConnecting && !this.connectionLock) {
+    if (!this.isConnected()) {
       setTimeout(() => this.connect(), 500);
     }
   }
 
   clearAuth() {
-    console.log('🔓 Clearing WebSocket authentication');
-    
     this.queryParams = {
       type: 'customer',
       user_id: 'anonymous',
@@ -115,154 +103,246 @@ class WebSocketService {
 
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    this.lastData.clear();
 
     if (this.isConnected()) {
+      this.forcedClose = true;
       this.disconnect();
     }
   }
 
-  // ========== CONNECTION METHODS ==========
   buildUrl() {
     const params = new URLSearchParams(this.queryParams);
     return `${this.url}?${params.toString()}`;
   }
 
   connect() {
-    // ✅ FIX: Prevent multiple connection attempts
     if (this.connectionLock) {
-      console.log('🔒 Connection already in progress, skipping...');
+      console.log('🔒 Connection already in progress');
       return;
     }
 
-    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-      console.log('✅ WebSocket already connected');
-      return;
-    }
-    
-    if (this.socket && this.socket.readyState === WebSocket.CONNECTING) {
-      console.log('⏳ WebSocket already connecting');
+    if (this.isConnected()) {
+      console.log('✅ Already connected');
+      this.dispatchEvent('connected', { connected: true });
       return;
     }
 
-    // Don't connect without token
     if (!this.queryParams.token) {
-      console.log('⏸️ No token available, waiting for authentication...');
+      console.log('⏸️ No token available');
       return;
     }
 
     this.connectionLock = true;
     this.isManualDisconnect = false;
     this.isConnecting = true;
+    this.forcedClose = false;
     
     const fullUrl = this.buildUrl();
-    console.log(`🔗 Connecting to WebSocket server: ${fullUrl.replace(/token=([^&]*)/, 'token=***')}`);
+    console.log(`🔗 Connecting to WebSocket with URL:`, fullUrl);
     
     try {
-      this.socket = new WebSocket(fullUrl);
-      
-      this.socket.onopen = () => {
-        console.log('✅✅✅ CONNECTED to WebSocket server!');
-        console.log('👤 Connected as:', this.queryParams.name, `(${this.queryParams.user_id})`, `Role: ${this.queryParams.type}`);
-        this.connected = true;
-        this.isConnecting = false;
-        this.connectionLock = false;
-        this.reconnectAttempts = 0;
-        this.setupHeartbeat();
-        this.flushMessageQueue();
-        this.dispatchEvent('connected', {
-          connected: true,
-          user: {
-            id: this.queryParams.user_id,
-            name: this.queryParams.name,
-            role: this.queryParams.type
-          }
-        });
-      };
-
-      this.socket.onmessage = (event) => {
-        const rawData = event.data.toString();
-        
-        if (rawData === 'pong' || rawData.includes('pong')) {
-          this.lastPong = Date.now();
-          return;
-        }
-        
+      if (this.socket) {
         try {
-          const data = JSON.parse(rawData);
-          console.log('📨 Received:', data.event || 'message');
-          
-          if (data.event === 'pong' || data.type === 'pong') {
-            this.lastPong = Date.now();
-          }
-          
-          if (data.event) {
-            this.dispatchEvent(data.event, data.data || data);
-          }
-          this.dispatchEvent('message', data);
-          
-        } catch (error) {
-          console.log('📝 Plain text:', rawData.substring(0, 200));
-        }
-      };
-
-      this.socket.onclose = (event) => {
-        console.log('❌ WebSocket disconnected. Code:', event.code, 'Reason:', event.reason);
-        this.connected = false;
-        this.isConnecting = false;
-        this.connectionLock = false;
+          this.socket.close();
+        } catch (e) {}
         this.socket = null;
-        
-        if (this.pingInterval) {
-          clearInterval(this.pingInterval);
-          this.pingInterval = null;
-        }
-        
-        this.dispatchEvent('disconnected', {
-          code: event.code,
-          reason: event.reason
-        });
-        
-        // ✅ FIX: Only reconnect if not manual disconnect and has token
-        if (!this.isManualDisconnect && 
-            event.code !== 1000 && 
-            this.reconnectAttempts < this.maxReconnectAttempts &&
-            this.queryParams.token) {
-          
-          this.reconnectAttempts++;
-          const delay = this.reconnectDelay * Math.min(this.reconnectAttempts, 3);
-          
-          console.log(`🔄 Reconnecting (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${delay}ms...`);
-          
-          setTimeout(() => {
-            this.connectionLock = false;
-            this.connect();
-          }, delay);
-        }
-      };
+      }
 
-      this.socket.onerror = (error) => {
-        console.error('❌ WebSocket error:', error);
-        this.isConnecting = false;
-        this.connectionLock = false;
-        this.dispatchEvent('error', { error });
-      };
+      this.socket = new WebSocket(fullUrl);
+      this.socket.binaryType = 'arraybuffer';
+      
+      this.socket.onopen = this.handleOpen;
+      this.socket.onmessage = this.handleMessage;
+      this.socket.onclose = this.handleClose;
+      this.socket.onerror = this.handleError;
 
     } catch (error) {
       console.error('❌ Failed to create WebSocket:', error);
       this.isConnecting = false;
       this.connectionLock = false;
+      this.scheduleReconnect();
     }
   }
 
-  // ========== MESSAGE METHODS ==========
+  handleOpen = (event) => {
+    console.log('✅✅✅ WebSocket CONNECTED!', event);
+    this.connected = true;
+    this.isConnecting = false;
+    this.connectionLock = false;
+    this.reconnectAttempts = 0;
+    this.lastPong = Date.now();
+    
+    this.startHeartbeat();
+    this.flushMessageQueue();
+    
+    // Request pending requests immediately after connection for providers
+    if (this.queryParams.type === 'provider') {
+      console.log('👷 Provider connected, requesting pending requests...');
+      setTimeout(() => {
+        this.getPendingRequests();
+      }, 500);
+    }
+    
+    this.dispatchEvent('connected', {
+      connected: true,
+      user: this.getCurrentUser()
+    });
+  };
+
+  handleMessage = (event) => {
+    const rawData = event.data;
+    console.log('📨 WebSocket message received:', rawData);
+    
+    try {
+      const data = JSON.parse(rawData);
+      console.log('📦 Parsed message:', data);
+      
+      // Handle pong responses
+      if (data.event === 'pong') {
+        this.lastPong = Date.now();
+        return;
+      }
+      
+      // Handle welcome message
+      if (data.event === 'welcome') {
+        console.log('👋 Welcome message:', data.data);
+        this.dispatchEvent('welcome', data.data);
+        return;
+      }
+      
+      // Handle pending_requests specifically
+      if (data.event === 'pending_requests') {
+        const requests = data.data || [];
+        console.log(`📨 Received ${requests.length} pending requests:`, requests);
+        
+        // Store the data for this event type
+        this.lastData.set('pending_requests', requests);
+        
+        // Dispatch multiple events for flexibility
+        this.dispatchEvent('pending_requests', requests);
+        this.dispatchEvent('requests_update', requests);
+        this.dispatchEvent('pending_count', requests.length);
+        
+        // Force a re-render by dispatching a generic update
+        this.dispatchEvent('message', data);
+      }
+      
+      // Handle new_request event
+      else if (data.event === 'new_request') {
+        console.log('🆕 New request received:', data.data);
+        
+        // Update stored pending requests if they exist
+        const currentRequests = this.lastData.get('pending_requests') || [];
+        if (Array.isArray(currentRequests)) {
+          const updatedRequests = [...currentRequests, data.data];
+          this.lastData.set('pending_requests', updatedRequests);
+          this.dispatchEvent('pending_requests', updatedRequests);
+          this.dispatchEvent('pending_count', updatedRequests.length);
+        }
+        
+        this.dispatchEvent('new_request', data.data);
+        this.dispatchEvent('message', data);
+      }
+      
+      // Handle all other events
+      else if (data.event) {
+        console.log(`📨 Dispatching event: ${data.event}`, data.data);
+        this.dispatchEvent(data.event, data.data || data);
+        this.dispatchEvent('message', data);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error parsing WebSocket message:', error, rawData);
+    }
+  };
+
+  handleClose = (event) => {
+    console.log('❌ WebSocket closed. Code:', event.code, 'Reason:', event.reason);
+    
+    this.connected = false;
+    this.isConnecting = false;
+    this.connectionLock = false;
+    this.socket = null;
+    
+    this.stopHeartbeat();
+    
+    this.dispatchEvent('disconnected', {
+      code: event.code,
+      reason: event.reason
+    });
+    
+    if (this.isManualDisconnect || this.forcedClose) {
+      console.log('👋 Manual disconnect - not reconnecting');
+      return;
+    }
+    
+    if (!this.queryParams.token) {
+      console.log('⏸️ No token - not reconnecting');
+      return;
+    }
+    
+    this.scheduleReconnect();
+  };
+
+  handleError = (error) => {
+    console.error('❌ WebSocket error:', error);
+    this.dispatchEvent('error', { error });
+  };
+
+  startHeartbeat() {
+    this.stopHeartbeat();
+    
+    this.pingInterval = setInterval(() => {
+      if (this.isConnected()) {
+        this.send('ping', { heartbeat: true });
+      }
+    }, 20000);
+    
+    this.heartbeatCheck = setInterval(() => {
+      if (this.isConnected() && Date.now() - this.lastPong > 40000) {
+        console.log('⚠️ No pong received for 40s, reconnecting...');
+        this.reconnect();
+      }
+    }, 30000);
+  }
+
+  stopHeartbeat() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.heartbeatCheck) {
+      clearInterval(this.heartbeatCheck);
+      this.heartbeatCheck = null;
+    }
+  }
+
+  scheduleReconnect() {
+    const delay = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 30000);
+    
+    this.reconnectAttempts++;
+    
+    if (this.reconnectAttempts <= this.maxReconnectAttempts) {
+      console.log(`🔄 Reconnecting in ${Math.round(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      
+      setTimeout(() => {
+        this.connectionLock = false;
+        this.connect();
+      }, delay);
+    } else {
+      console.log('❌ Max reconnection attempts reached');
+      this.dispatchEvent('max_reconnect', { attempts: this.reconnectAttempts });
+    }
+  }
+
   send(event, data = {}) {
     if (!this.isConnected()) {
-      console.log('⏳ WebSocket not connected, queueing message:', event);
+      console.log(`📤 Queueing message: ${event} (not connected)`);
       this.messageQueue.push({ event, data });
       
-      // Try to connect if not already
       if (!this.isConnecting && !this.connectionLock && this.queryParams.token) {
-        setTimeout(() => this.connect(), 100);
+        this.connect();
       }
       return false;
     }
@@ -274,11 +354,12 @@ class WebSocketService {
     };
 
     try {
-      this.socket.send(JSON.stringify(message));
-      console.log('📤 Sent:', event);
+      const messageStr = JSON.stringify(message);
+      console.log(`📤 Sending message: ${event}`, data);
+      this.socket.send(messageStr);
       return true;
     } catch (error) {
-      console.error('❌ Error sending message:', error);
+      console.error('❌ Send error:', error);
       this.messageQueue.push({ event, data });
       return false;
     }
@@ -288,30 +369,25 @@ class WebSocketService {
     return this.send(event, data);
   }
 
-  flushMessageQueue() {
-    if (this.messageQueue.length === 0) return;
-    console.log(`📤 Flushing ${this.messageQueue.length} queued messages...`);
-    
-    const queue = [...this.messageQueue];
-    this.messageQueue = [];
-    
-    queue.forEach(({ event, data }) => {
-      setTimeout(() => this.send(event, data), 100);
+  // Special method for providers to get pending requests
+  getPendingRequests() {
+    console.log('📨 Requesting pending requests from server...');
+    return this.send('get_pending_requests', { 
+      provider_id: this.queryParams.user_id,
+      service: this.queryParams.service 
     });
   }
 
-  // ========== HEARTBEAT ==========
-  setupHeartbeat() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-    }
-
-    this.pingInterval = setInterval(() => {
-      if (this.isConnected()) {
-        this.send('ping', { heartbeat: true });
-        this.lastPong = Date.now();
-      }
-    }, 15000);
+  flushMessageQueue() {
+    if (this.messageQueue.length === 0) return;
+    
+    console.log(`📤 Flushing ${this.messageQueue.length} queued messages`);
+    const queue = [...this.messageQueue];
+    this.messageQueue = [];
+    
+    queue.forEach(({ event, data }, index) => {
+      setTimeout(() => this.send(event, data), index * 100);
+    });
   }
 
   // ========== EVENT LISTENERS ==========
@@ -320,33 +396,54 @@ class WebSocketService {
       this.eventListeners.set(event, new Set());
     }
     this.eventListeners.get(event).add(callback);
+    console.log(`👂 Listener added for event: ${event}, total listeners: ${this.eventListeners.get(event).size}`);
+    
+    // If we have stored data for this event, call the callback immediately
+    if (this.lastData.has(event)) {
+      console.log(`📦 Found cached data for ${event}, calling callback immediately`);
+      setTimeout(() => {
+        try {
+          callback(this.lastData.get(event));
+        } catch (error) {
+          console.error(`Error in ${event} listener:`, error);
+        }
+      }, 0);
+    }
+    
     return this;
   }
 
   off(event, callback) {
     if (this.eventListeners.has(event)) {
       this.eventListeners.get(event).delete(callback);
+      console.log(`👂 Listener removed for event: ${event}, remaining: ${this.eventListeners.get(event).size}`);
     }
     return this;
   }
 
   dispatchEvent(event, data) {
     if (this.eventListeners.has(event)) {
-      this.eventListeners.get(event).forEach(callback => {
+      const listeners = this.eventListeners.get(event);
+      console.log(`📢 Dispatching event: ${event} to ${listeners.size} listeners`);
+      listeners.forEach(callback => {
         try {
           callback(data);
         } catch (error) {
           console.error(`Error in ${event} listener:`, error);
         }
       });
+    } else {
+      console.log(`📢 No listeners for event: ${event}`);
     }
   }
 
   // ========== CONNECTION MANAGEMENT ==========
   reconnect() {
-    console.log('🔄 Manual reconnection requested');
+    console.log('🔄 Manual reconnect triggered');
+    this.isManualDisconnect = false;
+    this.forcedClose = false;
     this.disconnect();
-    setTimeout(() => this.connect(), 1000);
+    setTimeout(() => this.connect(), 500);
   }
 
   disconnect() {
@@ -355,18 +452,22 @@ class WebSocketService {
     this.connectionLock = false;
     this.messageQueue = [];
     
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
+    this.stopHeartbeat();
     
     if (this.socket) {
-      this.socket.close(1000, 'Manual disconnect');
+      this.socket.onopen = null;
+      this.socket.onmessage = null;
+      this.socket.onclose = null;
+      this.socket.onerror = null;
+      
+      try {
+        this.socket.close(1000, 'Manual disconnect');
+      } catch (e) {}
       this.socket = null;
     }
     
     this.connected = false;
-    console.log('👋 WebSocket manually disconnected');
+    console.log('👋 Disconnected');
   }
 
   isConnected() {
@@ -393,16 +494,19 @@ class WebSocketService {
       isAuthenticated: this.queryParams.user_id !== 'anonymous' && !!this.queryParams.token
     };
   }
+
+  // Get last received data for an event
+  getLastData(event) {
+    return this.lastData.get(event);
+  }
 }
 
-// ========== CREATE SINGLETON INSTANCE ==========
+// Create singleton instance
 const socket = new WebSocketService();
 
-// ========== ✅ FIXED: DON'T AUTO-CONNECT ON PAGE LOAD ==========
-// Wait for user authentication instead of auto-connecting
+// Make socket available globally for debugging
 if (typeof window !== 'undefined') {
-  // Just initialize, don't connect automatically
-  console.log('📡 WebSocket service initialized, waiting for authentication...');
+  window.debugSocket = socket;
 }
 
 export { socket };

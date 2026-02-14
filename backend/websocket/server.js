@@ -15,14 +15,22 @@ class WebSocketServer {
 
   setupEventHandlers() {
     this.wss.on('connection', async (ws, req) => {
+      let clientId = null;
+      
       try {
         const url = new URL(req.url, `http://${req.headers.host}`);
         
         const token = url.searchParams.get('token');
+        const service = url.searchParams.get('service') || '';
+        const userType = url.searchParams.get('type') || '';
+        const userId = url.searchParams.get('user_id') || '';
+        const name = url.searchParams.get('name') || 'User';
+        
+        console.log(`🔌 New WebSocket connection attempt:`, { userType, userId, name, service });
         
         if (!token) {
+          console.log('❌ No token provided');
           ws.close(1008, 'No token provided');
-          console.log('❌ WebSocket connection rejected: No token');
           return;
         }
 
@@ -30,19 +38,16 @@ class WebSocketServer {
         try {
           decoded = jwt.verify(token, process.env.JWT_SECRET);
         } catch (error) {
+          console.log('❌ Invalid token:', error.message);
           ws.close(1008, 'Invalid or expired token');
-          console.log('❌ WebSocket connection rejected: Invalid token');
           return;
         }
 
-        const userId = decoded.userId.toString();
-        const userType = decoded.user_type;
-        const name = decoded.name || 'User';
-        const service = url.searchParams.get('service') || decoded.service || '';
+        // Create client ID
+        clientId = `${userType}_${userId}_${Date.now()}`;
         
-        const clientId = `${userType}_${userId}_${Date.now()}`;
-        
-        this.clients.set(clientId, { 
+        // Store client data
+        const clientData = { 
           ws, 
           type: userType, 
           userId, 
@@ -50,22 +55,21 @@ class WebSocketServer {
           service,
           token: decoded,
           connectedAt: new Date() 
+        };
+        
+        this.clients.set(clientId, clientData);
+
+        // Broadcast user online to all clients
+        this.broadcastToAll({
+          event: 'user_online',
+          data: {
+            userId,
+            userType,
+            name
+          }
         });
 
-        if (userType === 'provider' && service) {
-          if (!this.providersByService.has(service)) {
-            this.providersByService.set(service, new Set());
-          }
-          this.providersByService.get(service).add(clientId);
-          
-          console.log(`👷 Provider connected: ${name} (${service}) - ID: ${userId}`);
-          console.log(`📊 Total providers online: ${this.getProviderCount()}`);
-          
-          await this.sendPendingRequests(clientId, service);
-        } else {
-          console.log(`👤 Customer connected: ${name} - ID: ${userId}`);
-        }
-
+        // Send welcome message immediately
         ws.send(JSON.stringify({
           event: 'welcome',
           data: {
@@ -73,18 +77,59 @@ class WebSocketServer {
             clientId,
             userType,
             userId,
+            service,
             timestamp: new Date().toISOString()
           }
         }));
 
+        // Handle provider connection
+        if (userType === 'provider') {
+          if (service) {
+            if (!this.providersByService.has(service)) {
+              this.providersByService.set(service, new Set());
+            }
+            this.providersByService.get(service).add(clientId);
+          }
+          
+          console.log(`👷 Provider connected: ${name} (${service}) - ID: ${userId}`);
+          console.log(`📊 Total providers online: ${this.getProviderCount()}`);
+          console.log(`📊 Providers by service:`, Array.from(this.providersByService.keys()).join(', '));
+          
+          // Send pending requests AFTER welcome message
+          setTimeout(async () => {
+            await this.sendPendingRequests(clientId, service);
+          }, 500);
+        } else {
+          console.log(`👤 Customer connected: ${name} - ID: ${userId}`);
+        }
+
+        // Handle incoming messages
         ws.on('message', async (message) => {
-          await this.handleMessage(clientId, message);
+          try {
+            await this.handleMessage(clientId, message);
+          } catch (error) {
+            console.error('Error handling message:', error);
+          }
         });
 
-        ws.on('close', () => {
-          console.log(`❌ ${userType} disconnected: ${userId} (${name})`);
+        // Handle close
+        ws.on('close', (code, reason) => {
+          console.log(`❌ ${userType} disconnected: ${userId} (${name}) - Code: ${code}, Reason: ${reason}`);
+          
+          // Broadcast user offline
+          this.broadcastToAll({
+            event: 'user_offline',
+            data: {
+              userId,
+              userType,
+              name
+            }
+          });
+          
+          // Remove from clients
           this.clients.delete(clientId);
           
+          // Remove from providersByService
           if (userType === 'provider' && service) {
             const serviceProviders = this.providersByService.get(service);
             if (serviceProviders) {
@@ -94,75 +139,97 @@ class WebSocketServer {
               }
             }
           }
+          
+          console.log(`📊 Providers remaining: ${this.getProviderCount()}`);
         });
 
+        // Handle error
         ws.on('error', (error) => {
           console.error(`WebSocket error for ${userId}:`, error);
         });
 
       } catch (error) {
         console.error('WebSocket connection error:', error);
-        ws.close(1011, 'Internal server error');
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.close(1011, 'Internal server error');
+        }
       }
     });
   }
 
   async sendPendingRequests(clientId, serviceType) {
     try {
+      const client = this.clients.get(clientId);
+      if (!client) {
+        console.log(`❌ Client ${clientId} not found for sending pending requests`);
+        return;
+      }
+
+      if (client.ws.readyState !== WebSocket.OPEN) {
+        console.log(`❌ Client ${clientId} WebSocket not open, state: ${client.ws.readyState}`);
+        return;
+      }
+
       const db = await mongoDB.connect();
       const ordersCollection = db.collection('orders');
       
       const query = { status: 'pending' };
-      if (serviceType && serviceType !== 'all') {
-        query.serviceType = serviceType;
+      if (serviceType && serviceType !== 'all' && serviceType !== 'undefined') {
+        query.$or = [
+          { serviceType: serviceType },
+          { service_type: serviceType }
+        ];
       }
+      
+      console.log(`🔍 Finding pending ${serviceType} requests for client ${clientId}...`);
       
       const pendingRequests = await ordersCollection
         .find(query)
         .sort({ createdAt: -1 })
-        .limit(20)
+        .limit(50)
         .toArray();
   
-      this.sendToClient(clientId, {
-        event: 'pending_requests',
-        data: {
-          requests: pendingRequests,
-          count: pendingRequests.length
-        }
-      });
+      console.log(`📨 Found ${pendingRequests.length} pending ${serviceType} requests`);
       
-      console.log(`📨 Sent ${pendingRequests.length} pending requests to provider`);
+      if (pendingRequests.length > 0) {
+        console.log('📋 Sample request:', {
+          id: pendingRequests[0].id,
+          serviceType: pendingRequests[0].serviceType || pendingRequests[0].service_type,
+          title: pendingRequests[0].title
+        });
+      }
+  
+      // Send the requests
+      client.ws.send(JSON.stringify({
+        event: 'pending_requests',
+        data: pendingRequests
+      }));
+      
+      console.log(`📨 Sent ${pendingRequests.length} pending requests to provider ${client.name}`);
+      
     } catch (error) {
       console.error('Error sending pending requests:', error);
     }
   }
 
   async handleMessage(clientId, message) {
+    const client = this.clients.get(clientId);
+    if (!client) {
+      console.log(`❌ Client ${clientId} not found`);
+      return;
+    }
+
     try {
-      const client = this.clients.get(clientId);
-      if (!client) return;
-  
       const data = JSON.parse(message);
       console.log(`📨 WebSocket: ${data.event} from ${client.userId} (${client.type})`);
-  
+
       switch (data.event) {
-        case 'create_request':
-          if (client.type !== 'customer') {
-            this.sendToClient(clientId, {
-              event: 'error',
-              data: { message: 'Only customers can create requests' }
-            });
-            return;
-          }
-          await this.handleCreateRequest(clientId, data.data);
-          break;
-          
         case 'accept_request':
           if (client.type !== 'provider') {
-            this.sendToClient(clientId, {
+            client.ws.send(JSON.stringify({
               event: 'error',
               data: { message: 'Only providers can accept requests' }
-            });
+            }));
             return;
           }
           await this.handleAcceptRequest(clientId, data.data);
@@ -170,20 +237,47 @@ class WebSocketServer {
           
         case 'get_pending_requests':
           if (client.type !== 'provider') {
-            this.sendToClient(clientId, {
+            client.ws.send(JSON.stringify({
               event: 'error',
               data: { message: 'Only providers can get pending requests' }
-            });
+            }));
             return;
           }
+          console.log(`📨 Provider ${client.name} requesting pending requests for service: ${client.service}`);
           await this.sendPendingRequests(clientId, client.service);
           break;
           
+        case 'provider_online':
+          console.log(`👷 Provider ${client.name} is now online`);
+          this.broadcastToType('customer', {
+            event: 'provider_status',
+            data: {
+              providerId: client.userId,
+              providerName: client.name,
+              service: client.service,
+              status: 'online'
+            }
+          });
+          break;
+
+        // ============ CHAT EVENTS ============
+        case 'chat_message':
+          await this.handleChatMessage(clientId, data.data);
+          break;
+
+        case 'typing_indicator':
+          await this.handleTypingIndicator(clientId, data.data);
+          break;
+
+        case 'messages_read':
+          await this.handleMessagesRead(clientId, data.data);
+          break;
+          
         case 'ping':
-          this.sendToClient(clientId, {
+          client.ws.send(JSON.stringify({
             event: 'pong',
             data: { timestamp: new Date().toISOString() }
-          });
+          }));
           break;
           
         default:
@@ -194,71 +288,139 @@ class WebSocketServer {
     }
   }
 
-  async handleCreateRequest(clientId, requestData) {
-    const client = this.clients.get(clientId);
-    if (!client) return;
+  // ============ CHAT HANDLERS ============
 
-    try {
-      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+  async handleChatMessage(clientId, chatData) {
+    const sender = this.clients.get(clientId);
+    if (!sender) return;
 
-      const request = {
-        id: requestId,
-        title: requestData.title,
-        description: requestData.description,
-        location: requestData.location,
-        budget: requestData.budget,
-        customerId: client.userId,
-        customerName: client.name,
-        serviceType: requestData.service_type,
-        schedule: requestData.schedule || 'ASAP',
-        contact: requestData.contact_number,
-        status: 'pending',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        source: 'websocket'
-      };
+    const { chatId, message, receiverId, jobId } = chatData;
 
-      const db = await mongoDB.connect();
-      const ordersCollection = db.collection('orders');
-      await ordersCollection.insertOne(request);
-      
-      console.log('✅ Request saved to MongoDB:', request.id);
-      console.log('🔧 Service Type:', request.serviceType);
+    console.log(`💬 Chat message from ${sender.name} to user ${receiverId}:`, message.text);
 
-      this.sendToClient(clientId, {
-        event: 'request_created',
-        data: {
-          success: true,
-          requestId: request.id,
-          message: 'Your service request has been created successfully',
-          request: request
-        }
-      });
+    // Add metadata to message
+    const enhancedMessage = {
+      ...message,
+      chatId,
+      jobId
+    };
 
-      const providerCount = await this.broadcastToProviders(request.serviceType, {
-        event: 'new_request',
-        data: request
-      });
-
-      console.log(`📢 Broadcasted new ${request.serviceType} request to ${providerCount} providers`);
-
-      if (providerCount === 0) {
-        console.log(`⚠️ No ${request.serviceType} providers online right now`);
+    // Send to specific receiver
+    const sent = this.sendToUser(receiverId, {
+      event: 'chat_message',
+      data: {
+        chatId,
+        message: enhancedMessage,
+        senderId: sender.userId,
+        senderName: sender.name,
+        receiverId
       }
+    });
 
-    } catch (error) {
-      console.error('❌ Error creating request:', error);
-      this.sendToClient(clientId, {
-        event: 'request_error',
+    // Also send back to sender for confirmation (optional)
+    if (sent) {
+      sender.ws.send(JSON.stringify({
+        event: 'chat_message_delivered',
         data: {
-          success: false,
-          message: 'Failed to create request. Please try again.'
+          chatId,
+          messageId: message.id,
+          timestamp: new Date().toISOString()
         }
+      }));
+    }
+
+    // Save message to database (optional - for history)
+    try {
+      const db = await mongoDB.connect();
+      const messagesCollection = db.collection('chat_messages');
+      
+      await messagesCollection.insertOne({
+        chatId,
+        messageId: message.id,
+        text: message.text,
+        senderId: sender.userId,
+        senderName: sender.name,
+        receiverId,
+        jobId,
+        timestamp: new Date(message.timestamp),
+        delivered: true,
+        read: false
       });
+    } catch (error) {
+      console.error('Error saving message to database:', error);
     }
   }
 
-  // ========== ✅ COMPLETE FIXED handleAcceptRequest ==========
+  async handleTypingIndicator(clientId, typingData) {
+    const sender = this.clients.get(clientId);
+    if (!sender) return;
+
+    const { chatId, isTyping, receiverId } = typingData;
+
+    console.log(`✏️ Typing indicator from ${sender.name}: ${isTyping ? 'typing' : 'stopped'}`);
+
+    // Send typing indicator to receiver
+    this.sendToUser(receiverId, {
+      event: 'user_typing',
+      data: {
+        chatId,
+        userId: sender.userId,
+        isTyping,
+        timestamp: new Date().toISOString()
+      }
+    });
+  }
+
+  async handleMessagesRead(clientId, readData) {
+    const reader = this.clients.get(clientId);
+    if (!reader) return;
+
+    const { chatId, userId } = readData;
+
+    console.log(`👁️ Messages read in chat ${chatId} by ${reader.name}`);
+
+    // Notify the other participant that messages were read
+    // Find the other participant in this chat
+    for (const [otherClientId, otherClient] of this.clients) {
+      if (otherClient.userId !== reader.userId) {
+        // Assume this is the chat participant
+        otherClient.ws.send(JSON.stringify({
+          event: 'messages_read',
+          data: {
+            chatId,
+            userId: reader.userId,
+            timestamp: new Date().toISOString()
+          }
+        }));
+        break;
+      }
+    }
+
+    // Update database (optional)
+    try {
+      const db = await mongoDB.connect();
+      const messagesCollection = db.collection('chat_messages');
+      
+      await messagesCollection.updateMany(
+        { 
+          chatId, 
+          receiverId: reader.userId,
+          read: false 
+        },
+        { 
+          $set: { 
+            read: true,
+            readAt: new Date() 
+          } 
+        }
+      );
+    } catch (error) {
+      console.error('Error updating message read status:', error);
+    }
+  }
+
+  // ============ REQUEST HANDLERS ============
+
   async handleAcceptRequest(clientId, acceptData) {
     const provider = this.clients.get(clientId);
     if (!provider) {
@@ -272,53 +434,35 @@ class WebSocketServer {
       const db = await mongoDB.connect();
       const ordersCollection = db.collection('orders');
 
-      // Find the request
       const request = await ordersCollection.findOne({ id: acceptData.request_id });
       
       if (!request) {
         console.log(`❌ Request not found: ${acceptData.request_id}`);
-        this.sendToClient(clientId, {
+        provider.ws.send(JSON.stringify({
           event: 'accept_error',
           data: { 
             success: false, 
             message: 'Request not found',
             request_id: acceptData.request_id
           }
-        });
+        }));
         return;
       }
 
-      console.log(`📦 Request found: ${request.id}, Status: ${request.status}`);
-
-      // Check if request is still pending
       if (request.status !== 'pending') {
         console.log(`❌ Request already ${request.status}`);
-        this.sendToClient(clientId, {
+        provider.ws.send(JSON.stringify({
           event: 'accept_error',
           data: { 
             success: false, 
             message: `Request already ${request.status}`,
             request_id: acceptData.request_id
           }
-        });
+        }));
         return;
       }
 
-      // Check if provider is accepting their own request
-      if (request.customerId === provider.userId) {
-        console.log(`❌ Provider cannot accept their own request`);
-        this.sendToClient(clientId, {
-          event: 'accept_error',
-          data: { 
-            success: false, 
-            message: 'You cannot accept your own request',
-            request_id: acceptData.request_id
-          }
-        });
-        return;
-      }
-
-      // Update request status in MongoDB
+      // Update request
       const updateResult = await ordersCollection.updateOne(
         { id: acceptData.request_id },
         {
@@ -334,23 +478,21 @@ class WebSocketServer {
       );
 
       if (updateResult.modifiedCount === 0) {
-        console.log(`❌ Failed to update request in MongoDB`);
-        this.sendToClient(clientId, {
+        console.log(`❌ Failed to update request`);
+        provider.ws.send(JSON.stringify({
           event: 'accept_error',
           data: { 
             success: false, 
             message: 'Failed to update request',
             request_id: acceptData.request_id
           }
-        });
+        }));
         return;
       }
 
       console.log(`✅ Request ${request.id} accepted by provider ${provider.name}`);
 
-      const updatedRequest = await ordersCollection.findOne({ id: acceptData.request_id });
-
-      // 1. Notify the customer
+      // Notify customer
       this.sendToUser(request.customerId, {
         event: 'request_accepted',
         data: {
@@ -362,43 +504,42 @@ class WebSocketServer {
         }
       });
 
-      // 2. Broadcast to ALL providers that this request is TAKEN
-      const broadcastCount = this.broadcastToType('provider', {
+      // Broadcast to all providers that this request is taken
+      this.broadcastToType('provider', {
         event: 'request_taken',
         data: {
-          requestId: request.id,
+          request_id: request.id,
           providerName: provider.name,
           serviceType: request.serviceType,
           message: `This request has been accepted by ${provider.name}`
         }
       });
 
-      console.log(`📢 Broadcasted 'request_taken' to ${broadcastCount} providers`);
-
-      // 3. Confirm to the accepting provider
-      this.sendToClient(clientId, {
+      // Confirm to provider
+      provider.ws.send(JSON.stringify({
         event: 'request_accepted_confirmation',
         data: {
           success: true,
-          request: updatedRequest,
+          request: request,
           message: 'You have successfully accepted the request'
         }
-      });
+      }));
 
     } catch (error) {
       console.error('❌ Error accepting request:', error);
-      this.sendToClient(clientId, {
+      provider.ws.send(JSON.stringify({
         event: 'accept_error',
         data: { 
           success: false, 
           message: 'Failed to accept request: ' + error.message,
           request_id: acceptData.request_id
         }
-      });
+      }));
     }
   }
 
-  // Helper methods
+  // ============ HELPER METHODS ============
+
   sendToClient(clientId, message) {
     const client = this.clients.get(clientId);
     if (client && client.ws.readyState === WebSocket.OPEN) {
@@ -412,8 +553,27 @@ class WebSocketServer {
     let count = 0;
     for (const [clientId, client] of this.clients) {
       if (client.type === userType && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(JSON.stringify(message));
-        count++;
+        try {
+          client.ws.send(JSON.stringify(message));
+          count++;
+        } catch (error) {
+          console.error(`Error sending to ${clientId}:`, error);
+        }
+      }
+    }
+    return count;
+  }
+
+  broadcastToAll(message) {
+    let count = 0;
+    for (const [clientId, client] of this.clients) {
+      if (client.ws.readyState === WebSocket.OPEN) {
+        try {
+          client.ws.send(JSON.stringify(message));
+          count++;
+        } catch (error) {
+          console.error(`Error sending to ${clientId}:`, error);
+        }
       }
     }
     return count;
@@ -422,23 +582,38 @@ class WebSocketServer {
   async broadcastToProviders(serviceType, message) {
     let count = 0;
     
+    console.log(`📢 Broadcasting to providers for service: ${serviceType}`);
+    
     for (const [clientId, client] of this.clients) {
       if (client.type === 'provider' && client.ws.readyState === WebSocket.OPEN) {
-        if (client.service === serviceType || client.service === 'all') {
-          client.ws.send(JSON.stringify(message));
-          count++;
+        // Check if provider service matches
+        if (!serviceType || client.service === serviceType || client.service === 'all' || client.service === '') {
+          try {
+            client.ws.send(JSON.stringify(message));
+            count++;
+            console.log(`✅ Sent to provider ${client.name} (${client.service})`);
+          } catch (error) {
+            console.error(`Error sending to provider ${client.name}:`, error);
+          }
+        } else {
+          console.log(`❌ Skipping provider ${client.name} (${client.service}) - not matching ${serviceType}`);
         }
       }
     }
     
+    console.log(`📢 Broadcasted to ${count} providers`);
     return count;
   }
 
   sendToUser(userId, message) {
     for (const [clientId, client] of this.clients) {
       if (client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(JSON.stringify(message));
-        return true;
+        try {
+          client.ws.send(JSON.stringify(message));
+          return true;
+        } catch (error) {
+          console.error(`Error sending to user ${userId}:`, error);
+        }
       }
     }
     return false;
@@ -456,10 +631,16 @@ class WebSocketServer {
     const providers = Array.from(this.clients.values()).filter(c => c.type === 'provider');
     const customers = Array.from(this.clients.values()).filter(c => c.type === 'customer');
     
+    const serviceBreakdown = {};
+    providers.forEach(p => {
+      serviceBreakdown[p.service] = (serviceBreakdown[p.service] || 0) + 1;
+    });
+    
     return {
       totalClients: this.clients.size,
       providers: providers.length,
       customers: customers.length,
+      serviceBreakdown,
       timestamp: new Date().toISOString()
     };
   }

@@ -149,7 +149,7 @@ const ServicesPage = () => {
         <div className="all-services-grid">
           {allServices.map((service, index) => (
             <div key={index} className="service-item-card">
-              <div className="service-icon">{service.icon}</div>
+              <div className="service-icon"><service.icon /></div>
               <h3>{service.name}</h3>
               <span className="service-category">{service.category}</span>
               <button 

@@ -8,6 +8,8 @@ import {
   FaPen, FaMoneyBill
 } from 'react-icons/fa';
 import { socket } from './services/socket';  // Now using our GoWebSocket
+import { SERVICE_TYPES } from '../components/serviceTypes';
+
 
 const FindJobs = () => {
   const navigate = useNavigate();
@@ -27,17 +29,12 @@ const FindJobs = () => {
     contactNumber: '',
     customerName: '',
   });
-
-  const serviceCategories = [
-    { id: 1, name: 'Plumbing', icon: '🚰', description: 'Pipes, Taps, Toilets' },
-    { id: 2, name: 'Electrical', icon: '🔌', description: 'Wiring, Switches' },
-    { id: 3, name: 'AC Repair', icon: '❄️', description: 'AC Servicing' },
-    { id: 4, name: 'Carpentry', icon: '🔨', description: 'Furniture, Doors' },
-    { id: 5, name: 'Painting', icon: '🎨', description: 'Home Painting' },
-    { id: 6, name: 'Cleaning', icon: '🧹', description: 'Home Cleaning' },
-    { id: 7, name: 'Appliance Repair', icon: '🔧', description: 'Washing Machine' },
-    { id: 8, name: 'Pest Control', icon: '🐜', description: 'Termite Control' },
-  ];
+  
+  {SERVICE_TYPES.map(service => (
+    <option key={service.value} value={service.value}>
+      {service.name}
+    </option>
+  ))}
 
   // Debug logging
   const addDebug = (msg) => {

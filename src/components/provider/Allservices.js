@@ -9,6 +9,8 @@ import {
 } from 'react-icons/fa';
 import { socket } from '../../Services/socket';
 import { useNavigate } from 'react-router-dom';
+import { SERVICE_TYPES } from '../../components/serviceTypes';
+
 
 const Allservices = () => {
   const navigate = useNavigate();
@@ -25,17 +27,11 @@ const Allservices = () => {
   const [liveCount, setLiveCount] = useState(0);
 
   // Service categories with icons and colors
-  const serviceCategories = [
-    { id: 'plumbing', name: 'Plumbing', icon: <FaWrench />, color: '#3498db', count: 24 },
-    { id: 'electrical', name: 'Electrical', icon: <FaBolt />, color: '#f39c12', count: 18 },
-    { id: 'ac_repair', name: 'AC Repair', icon: <FaSnowflake />, color: '#00bcd4', count: 15 },
-    { id: 'carpentry', name: 'Carpentry', icon: <FaHammer />, color: '#9b59b6', count: 12 },
-    { id: 'painting', name: 'Painting', icon: <FaPaintBrush />, color: '#e74c3c', count: 10 },
-    { id: 'cleaning', name: 'Cleaning', icon: <FaBroom />, color: '#2ecc71', count: 20 },
-    { id: 'appliance', name: 'Appliance', icon: <FaTv />, color: '#fd7e14', count: 8 },
-    { id: 'pest_control', name: 'Pest Control', icon: <FaBug />, color: '#95a5a6', count: 6 },
-    { id: 'car_service', name: 'Car Service', icon: <FaCar />, color: '#1abc9c', count: 14 },
-  ];
+  {SERVICE_TYPES.map(service => (
+    <option key={service.value} value={service.value}>
+      {service.name}
+    </option>
+  ))}
 
   // Real-time job feed
   useEffect(() => {
@@ -318,7 +314,7 @@ const Allservices = () => {
                   <span>All Services</span>
                   <span className="count">{jobs.length}</span>
                 </button>
-                {serviceCategories.map(cat => (
+                {SERVICE_TYPES.map(cat => (
                   <button
                     key={cat.id}
                     className={`category-item ${filter === cat.id ? 'active' : ''}`}
@@ -413,7 +409,7 @@ const Allservices = () => {
                         {/* Card Header */}
                         <div className="card-header">
                           <div className="service-icon" style={{ background: `${urgency.bg}` }}>
-                            {serviceCategories.find(c => c.id === job.category)?.icon || <FaWrench />}
+                            {SERVICE_TYPES.find(c => c.id === job.category)?.icon || <FaWrench />}
                           </div>
                           <div className="job-info">
                             <h3>{job.service}</h3>

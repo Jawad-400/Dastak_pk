@@ -1,5 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { 
+  FaPhone, FaLock, FaUser, FaMapMarkerAlt, FaEnvelope, FaIdCard,
+  FaEye, FaEyeSlash, FaCheckCircle, FaArrowRight, FaSpinner,
+  FaShieldAlt, FaClock, FaStar, FaUsers, FaCreditCard,
+  FaHandsHelping, FaFacebook, FaWhatsapp, FaTwitter, 
+  FaInstagram, FaGoogle, FaMobile
+} from 'react-icons/fa';
 import { socket } from '../../Services/socket';
 
 const CITIES = [
@@ -8,9 +15,28 @@ const CITIES = [
   'Bahawalpur', 'Sargodha', 'Sukkur', 'Larkana', 'Hyderabad'
 ];
 
+// Statistics data
+const stats = [
+  { value: '50,000+', label: 'Happy Customers', icon: <FaUsers /> },
+  { value: '25,000+', label: 'Jobs Completed', icon: <FaCheckCircle /> },
+  { value: '4.9/5', label: 'Customer Rating', icon: <FaStar /> },
+  { value: '< 30min', label: 'Avg. Response Time', icon: <FaClock /> }
+];
+
+// Features list
+const features = [
+  { icon: <FaShieldAlt />, title: 'Verified Professionals', description: 'All service providers are background verified' },
+  { icon: <FaCreditCard />, title: 'Secure Payments', description: 'Pay only when the job is completed to your satisfaction' },
+  { icon: <FaClock />, title: 'Quick Response', description: 'Get Orders from providers within minutes' },
+  { icon: <FaHandsHelping />, title: 'Satisfaction Guaranteed', description: '100% money-back guarantee if not satisfied' }
+];
+
 const CustomerLogin = () => {
   const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
+  const [showPassword, setShowPassword] = useState(false);
+  const [animateIn, setAnimateIn] = useState(false);
+  
   const [formData, setFormData] = useState({ 
     phone: '', 
     password: '', 
@@ -19,11 +45,16 @@ const CustomerLogin = () => {
     email: '',
     cnic: ''
   });
+  
   const [touched, setTouched] = useState({});
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  useEffect(() => {
+    setAnimateIn(true);
+  }, []);
 
   // ========== VALIDATION FUNCTIONS ==========
   const validateField = (name, value) => {
@@ -101,22 +132,24 @@ const CustomerLogin = () => {
     setErrors({ ...errors, [name]: err });
   };
 
-  // ========== PHONE-ONLY LOGIN HANDLER ==========
+  // ========== LOGIN HANDLER ==========
   const handleLogin = async (phone, password) => {
     try {
       const response = await fetch('http://localhost:4000/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          phone: phone.replace(/\D/g, ''),
-          password 
-        })
+        body: JSON.stringify({ phone, password })
       });
 
       const data = await response.json();
       
       if (data.success) {
         const { user, token } = data.data;
+        
+        if (user.user_type !== 'customer') {
+          setGeneralError('This account is not registered as a customer');
+          return;
+        }
         
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify({
@@ -126,7 +159,7 @@ const CustomerLogin = () => {
           phone: user.phone
         }));
         
-        console.log('✅ Customer logged in with phone:', phone);
+        console.log('✅ Customer logged in:', user.name);
         
         if (socket && socket.updateAuth) {
           socket.updateAuth({
@@ -136,11 +169,6 @@ const CustomerLogin = () => {
             token: token,
             service: ''
           });
-          
-          setTimeout(() => {
-            console.log('🔌 Connecting WebSocket...');
-            socket.connect();
-          }, 100);
         }
         
         setSuccessMessage('Logged in successfully!');
@@ -264,316 +292,1020 @@ const CustomerLogin = () => {
     setFormData({ phone: '', password: '', name: '', city: '', email: '', cnic: '' });
   };
 
-  // ========== STYLES ==========
-  const styles = {
-    container: {
-      maxWidth: "1200px",
-      margin: "40px auto",
-      padding: "0 20px",
-      minHeight: "80vh"
-    },
-    header: {
-      textAlign: "center",
-      marginBottom: "40px"
-    },
-    title: {
-      fontSize: "2.5rem",
-      color: "#2c3e50",
-      marginBottom: "10px",
-      fontWeight: "700"
-    },
-    subtitle: {
-      fontSize: "1.1rem",
-      color: "#7f8c8d"
-    },
-    card: {
-      background: "white",
-      borderRadius: "20px",
-      boxShadow: "0 10px 40px rgba(0, 0, 0, 0.1)",
-      padding: "40px",
-      maxWidth: "500px",
-      margin: "0 auto"
-    },
-    tabs: {
-      display: "flex",
-      marginBottom: "30px",
-      borderBottom: "2px solid #ecf0f1"
-    },
-    tabBtn: {
-      flex: 1,
-      padding: "15px",
-      border: "none",
-      background: "none",
-      fontSize: "1.1rem",
-      fontWeight: "600",
-      color: "#7f8c8d",
-      cursor: "pointer",
-      position: "relative"
-    },
-    activeTab: {
-      color: "#3498db",
-      borderBottom: "2px solid #3498db"
-    },
-    form: {
-      marginBottom: "30px"
-    },
-    formGroup: {
-      marginBottom: "25px"
-    },
-    label: {
-      display: "block",
-      marginBottom: "8px",
-      fontWeight: "600",
-      color: "#2c3e50",
-      fontSize: "0.95rem"
-    },
-    input: {
-      width: "100%",
-      padding: "14px",
-      border: "2px solid #e0e6ed",
-      borderRadius: "10px",
-      fontSize: "1rem",
-      transition: "all 0.3s",
-      boxSizing: "border-box"
-    },
-    errorInput: {
-      borderColor: "#e74c3c"
-    },
-    errorText: {
-      color: "#e74c3c",
-      fontSize: "0.85rem",
-      marginTop: "5px",
-      display: "block"
-    },
-    hint: {
-      color: "#7f8c8d",
-      fontSize: "0.85rem",
-      marginTop: "5px",
-      display: "block"
-    },
-    submitBtn: {
-      width: "100%",
-      padding: "16px",
-      background: "linear-gradient(135deg, #3498db, #2980b9)",
-      color: "white",
-      border: "none",
-      borderRadius: "10px",
-      fontSize: "1.1rem",
-      fontWeight: "600",
-      cursor: "pointer",
-      transition: "all 0.3s",
-      marginBottom: "20px"
-    },
-    disabledBtn: {
-      opacity: "0.7",
-      cursor: "not-allowed"
-    },
-    footer: {
-      textAlign: "center",
-      borderTop: "1px solid #ecf0f1",
-      paddingTop: "25px"
-    },
-    switchBtn: {
-      background: "none",
-      border: "none",
-      color: "#3498db",
-      fontWeight: "600",
-      cursor: "pointer",
-      fontSize: "1rem"
-    },
-    errorMessage: {
-      backgroundColor: "#fde8e8",
-      color: "#e74c3c",
-      padding: "12px",
-      borderRadius: "8px",
-      marginBottom: "20px",
-      textAlign: "center"
-    },
-    successMessage: {
-      backgroundColor: "#e8f5e9",
-      color: "#27ae60",
-      padding: "12px",
-      borderRadius: "8px",
-      marginBottom: "20px",
-      textAlign: "center"
-    }
-  };
-
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <h2 style={styles.title}>Welcome to Dastak.pk</h2>
-        <p style={styles.subtitle}>
-          {isLogin ? 'Login with your phone number' : 'Create a new account'}
-        </p>
-      </div>
-      
-      <div style={styles.card}>
-        <div style={styles.tabs}>
-          <button 
-            style={{...styles.tabBtn, ...(isLogin ? styles.activeTab : {})}}
-            onClick={() => setIsLogin(true)}
-          >
-            Login
-          </button>
-          <button 
-            style={{...styles.tabBtn, ...(!isLogin ? styles.activeTab : {})}}
-            onClick={() => setIsLogin(false)}
-          >
-            Sign Up
-          </button>
+    <div className="customer-portal-wrapper">
+      {/* Hero Section */}
+      <div className="portal-hero">
+        <div className="hero-particles"></div>
+        <div className="container">
+          <div className={`hero-content ${animateIn ? 'animate-in' : ''}`}>
+            <div className="hero-badge">
+              <span className="badge-icon">🏆</span>
+              <span className="badge-text">Pakistan's #1 Service Marketplace</span>
+            </div>
+            
+            <h1 className="hero-title">
+              <span className="title-dastak">DASTAK</span>
+              <span className="title-urdu">دستک</span>
+              <span className="title-registered">®</span>
+            </h1>
+            
+            <p className="hero-subtitle">
+              <span className="subtitle-highlight">50,000+ Happy Customers</span> trust us for their service needs
+            </p>
+            
+            <div className="hero-stats">
+              {stats.map((stat, index) => (
+                <div key={index} className="stat-card">
+                  <div className="stat-icon">{stat.icon}</div>
+                  <div className="stat-content">
+                    <div className="stat-value">{stat.value}</div>
+                    <div className="stat-label">{stat.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        
-        {generalError && (
-          <div style={styles.errorMessage}>
-            {generalError}
-          </div>
-        )}
-        
-        {successMessage && (
-          <div style={styles.successMessage}>
-            {successMessage}
-          </div>
-        )}
-        
-        <form onSubmit={handleSubmit} style={styles.form}>
-          {/* Phone Field - ALWAYS FIRST */}
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Phone Number *</label>
-            <input
-              type="tel"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="03XX-XXXXXXX"
-              style={{...styles.input, ...(errors.phone ? styles.errorInput : {})}}
-              autoFocus={isLogin}
-            />
-            {errors.phone && <span style={styles.errorText}>{errors.phone}</span>}
-            <span style={styles.hint}>Format: 03XX-XXXXXXX</span>
-          </div>
-          
-          {!isLogin && (
-            <>
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Full Name *</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  placeholder="Enter your full name"
-                  style={{...styles.input, ...(errors.name ? styles.errorInput : {})}}
-                />
-                {errors.name && <span style={styles.errorText}>{errors.name}</span>}
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>CNIC Number *</label>
-                <input
-                  type="text"
-                  name="cnic"
-                  value={formData.cnic}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  placeholder="12345-1234567-1"
-                  style={{...styles.input, ...(errors.cnic ? styles.errorInput : {})}}
-                />
-                {errors.cnic && <span style={styles.errorText}>{errors.cnic}</span>}
-                <span style={styles.hint}>Format: XXXXX-XXXXXXX-X</span>
-              </div>
-              
-              <div style={styles.formGroup}>
-                <label style={styles.label}>Email Address *</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  placeholder="Enter your email"
-                  style={{...styles.input, ...(errors.email ? styles.errorInput : {})}}
-                />
-                {errors.email && <span style={styles.errorText}>{errors.email}</span>}
+      </div>
+
+      {/* Main Content */}
+      <div className="portal-main">
+        <div className="container">
+          <div className="portal-grid">
+            {/* Left Column - Features */}
+            <div className="portal-features-section">
+              <div className="features-header">
+                <h2>Why Choose DASTAK?</h2>
+                <p>Experience the best service marketplace in Pakistan</p>
               </div>
 
-              <div style={styles.formGroup}>
-                <label style={styles.label}>City *</label>
-                <select
-                  name="city"
-                  value={formData.city}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  style={{...styles.input, ...(errors.city ? styles.errorInput : {})}}
-                >
-                  <option value="">Select your city</option>
-                  {CITIES.map((city) => (
-                    <option key={city} value={city.toLowerCase()}>{city}</option>
-                  ))}
-                </select>
-                {errors.city && <span style={styles.errorText}>{errors.city}</span>}
+              <div className="features-list">
+                {features.map((feature, index) => (
+                  <div key={index} className="feature-card">
+                    <div className="feature-icon">{feature.icon}</div>
+                    <div className="feature-content">
+                      <h3>{feature.title}</h3>
+                      <p>{feature.description}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </>
-          )}
-          
-          <div style={styles.formGroup}>
-            <label style={styles.label}>Password *</label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              onBlur={handleBlur}
-              placeholder="Enter your password"
-              style={{...styles.input, ...(errors.password ? styles.errorInput : {})}}
-              minLength={6}
-            />
-            {errors.password && <span style={styles.errorText}>{errors.password}</span>}
-            {!isLogin && (
-              <span style={styles.hint}>At least 6 characters</span>
-            )}
-          </div>
-          
-          {isLogin && (
-            <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "25px"}}>
-              <label style={{display: "flex", alignItems: "center", gap: "8px", color: "#5d6d7e", cursor: "pointer"}}>
-                <input type="checkbox" />
-                <span>Remember me</span>
-              </label>
-              <a href="/forgot-password" style={{color: "#3498db", fontSize: "0.95rem"}}>
-                Forgot Password?
-              </a>
+
+              <div className="testimonial-card">
+                <div className="testimonial-avatar">👩</div>
+                <div className="testimonial-content">
+                  <p className="testimonial-text">
+                    "Found a plumber within 30 minutes! Fixed my leaking pipe for just ₹1,800. Amazing service!"
+                  </p>
+                  <p className="testimonial-author">— Sara Khan, Lahore</p>
+                  <div className="testimonial-rating">
+                    <FaStar /> <FaStar /> <FaStar /> <FaStar /> <FaStar />
+                  </div>
+                </div>
+              </div>
+
+              <div className="app-promo">
+                <FaMobile className="app-icon" />
+                <div className="app-content">
+                  <h4>Get the DASTAK App</h4>
+                  <p>Post requests and track orders on the go</p>
+                  <div className="app-buttons">
+                    <span className="app-badge">App Store</span>
+                    <span className="app-badge">Google Play</span>
+                  </div>
+                </div>
+              </div>
             </div>
-          )}
-          
-          <button 
-            type="submit" 
-            style={{...styles.submitBtn, ...(isSubmitting ? styles.disabledBtn : {})}}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <span>Processing...</span>
-            ) : (
-              isLogin ? 'Login with Phone' : 'Create Account'
-            )}
-          </button>
-        </form>
-        
-        <div style={styles.footer}>
-          <p style={{color: "#5d6d7e", marginBottom: "10px"}}>
-            {isLogin ? "Don't have an account? " : "Already have an account? "}
-            <button 
-              type="button" 
-              style={styles.switchBtn}
-              onClick={toggleMode}
-            >
-              {isLogin ? 'Sign Up' : 'Login'}
-            </button>
-          </p>
+
+            {/* Right Column - Auth Form */}
+            <div className="portal-auth-section">
+              <div className="auth-card">
+                {/* Tabs */}
+                <div className="auth-tabs">
+                  <button 
+                    className={`auth-tab ${isLogin ? 'active' : ''}`}
+                    onClick={() => setIsLogin(true)}
+                  >
+                    <FaUser /> Login
+                  </button>
+                  <button 
+                    className={`auth-tab ${!isLogin ? 'active' : ''}`}
+                    onClick={() => setIsLogin(false)}
+                  >
+                    <FaUser /> Sign Up
+                  </button>
+                </div>
+
+                {/* Form */}
+                <div className="auth-form">
+                  <h2>{isLogin ? 'Welcome Back!' : 'Create Account'}</h2>
+                  <p className="form-subtitle">
+                    {isLogin ? 'Login to access your account' : 'Join thousands of satisfied customers'}
+                  </p>
+                  
+                  {generalError && (
+                    <div className="error-message">
+                      <span>⚠️</span> {generalError}
+                    </div>
+                  )}
+                  
+                  {successMessage && (
+                    <div className="success-message">
+                      <FaCheckCircle /> {successMessage}
+                    </div>
+                  )}
+                  
+                  <form onSubmit={handleSubmit}>
+                    {/* Phone Field - Always shown */}
+                    <div className="input-group">
+                      <label>
+                        <FaPhone className="input-icon" />
+                        <span>Phone Number</span>
+                      </label>
+                      <div className="input-wrapper">
+                        <input
+                          type="tel"
+                          name="phone"
+                          value={formData.phone}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          placeholder="03XX-XXXXXXX"
+                          className={errors.phone ? 'error' : ''}
+                        />
+                      </div>
+                      {errors.phone && <span className="error-text">{errors.phone}</span>}
+                      <small className="input-hint">Format: 03XX-XXXXXXX</small>
+                    </div>
+
+                    {/* Registration Fields */}
+                    {!isLogin && (
+                      <>
+                        <div className="form-row">
+                          <div className="input-group">
+                            <label>
+                              <FaUser className="input-icon" />
+                              <span>Full Name</span>
+                            </label>
+                            <input
+                              type="text"
+                              name="name"
+                              value={formData.name}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="Your full name"
+                              className={errors.name ? 'error' : ''}
+                            />
+                            {errors.name && <span className="error-text">{errors.name}</span>}
+                          </div>
+
+                          <div className="input-group">
+                            <label>
+                              <FaEnvelope className="input-icon" />
+                              <span>Email</span>
+                            </label>
+                            <input
+                              type="email"
+                              name="email"
+                              value={formData.email}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="your@email.com"
+                              className={errors.email ? 'error' : ''}
+                            />
+                            {errors.email && <span className="error-text">{errors.email}</span>}
+                          </div>
+                        </div>
+
+                        <div className="form-row">
+                          <div className="input-group">
+                            <label>
+                              <FaIdCard className="input-icon" />
+                              <span>CNIC</span>
+                            </label>
+                            <input
+                              type="text"
+                              name="cnic"
+                              value={formData.cnic}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              placeholder="12345-1234567-1"
+                              className={errors.cnic ? 'error' : ''}
+                            />
+                            {errors.cnic && <span className="error-text">{errors.cnic}</span>}
+                          </div>
+
+                          <div className="input-group">
+                            <label>
+                              <FaMapMarkerAlt className="input-icon" />
+                              <span>City</span>
+                            </label>
+                            <select
+                              name="city"
+                              value={formData.city}
+                              onChange={handleChange}
+                              onBlur={handleBlur}
+                              className={errors.city ? 'error' : ''}
+                            >
+                              <option value="">Select city</option>
+                              {CITIES.map(city => (
+                                <option key={city} value={city.toLowerCase()}>{city}</option>
+                              ))}
+                            </select>
+                            {errors.city && <span className="error-text">{errors.city}</span>}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Password Field */}
+                    <div className="input-group">
+                      <label>
+                        <FaLock className="input-icon" />
+                        <span>Password</span>
+                      </label>
+                      <div className="input-wrapper password-wrapper">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          name="password"
+                          value={formData.password}
+                          onChange={handleChange}
+                          onBlur={handleBlur}
+                          placeholder={isLogin ? 'Enter your password' : 'Create a password'}
+                          className={errors.password ? 'error' : ''}
+                        />
+                        <button 
+                          type="button"
+                          className="password-toggle"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <FaEyeSlash /> : <FaEye />}
+                        </button>
+                      </div>
+                      {errors.password && <span className="error-text">{errors.password}</span>}
+                      {!isLogin && (
+                        <small className="input-hint">At least 6 characters</small>
+                      )}
+                    </div>
+
+                    {/* Login Options */}
+                    {isLogin && (
+                      <div className="form-options">
+                        <label className="checkbox-label">
+                          <input type="checkbox" /> Remember me
+                        </label>
+                        <a href="/forgot-password" className="forgot-link">Forgot Password?</a>
+                      </div>
+                    )}
+
+                    {/* Submit Button */}
+                    <button 
+                      type="submit" 
+                      className={`submit-btn ${!isLogin ? 'register-btn' : ''}`}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <FaSpinner className="spin" /> Processing...
+                        </>
+                      ) : (
+                        <>
+                          {isLogin ? 'Login' : 'Create Account'} <FaArrowRight />
+                        </>
+                      )}
+                    </button>
+
+                    {/* Social Login (Optional) */}
+                    {isLogin && (
+                      <div className="social-login">
+                        <p>Or continue with</p>
+                        <div className="social-icons">
+                          <FaGoogle />
+                          <FaFacebook />
+                          <FaWhatsapp />
+                        </div>
+                      </div>
+                    )}
+                  </form>
+
+                  {/* Toggle between Login/Signup */}
+                  <div className="auth-footer">
+                    <p>
+                      {isLogin ? "Don't have an account? " : "Already have an account? "}
+                      <button onClick={toggleMode}>
+                        {isLogin ? 'Sign Up' : 'Login'}
+                      </button>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
+
+      <style jsx="true">{`
+        .customer-portal-wrapper {
+          min-height: 100vh;
+          background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        /* Hero Section */
+        .portal-hero {
+          position: relative;
+          background: linear-gradient(145deg, #0f172a, #1e293b);
+          padding: 80px 0;
+          overflow: hidden;
+        }
+
+        .hero-particles {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background-image: radial-gradient(#3498db20 1px, transparent 1px);
+          background-size: 30px 30px;
+          opacity: 0.4;
+        }
+
+        .container {
+          max-width: 1280px;
+          margin: 0 auto;
+          padding: 0 24px;
+          position: relative;
+          z-index: 2;
+        }
+
+        .hero-content {
+          text-align: center;
+          color: white;
+          opacity: 0;
+          transform: translateY(20px);
+          transition: all 0.6s ease;
+        }
+
+        .hero-content.animate-in {
+          opacity: 1;
+          transform: translateY(0);
+        }
+
+        .hero-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 20px;
+          background: rgba(255,255,255,0.1);
+          border-radius: 40px;
+          margin-bottom: 30px;
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .badge-icon {
+          font-size: 18px;
+        }
+
+        .badge-text {
+          font-size: 14px;
+          font-weight: 500;
+          color: #e2e8f0;
+        }
+
+        .hero-title {
+          margin: 0 0 20px;
+          font-size: 56px;
+          font-weight: 800;
+        }
+
+        .title-dastak {
+          color: white;
+          letter-spacing: 2px;
+        }
+
+        .title-urdu {
+          color: #94a3b8;
+          font-size: 42px;
+          font-family: 'Noto Nastaliq Urdu', serif;
+          margin-left: 8px;
+        }
+
+        .title-registered {
+          color: #64748b;
+          font-size: 20px;
+          vertical-align: super;
+          margin-left: 4px;
+        }
+
+        .hero-subtitle {
+          font-size: 18px;
+          color: #94a3b8;
+          margin-bottom: 40px;
+        }
+
+        .subtitle-highlight {
+          color: #3498db;
+          font-weight: 600;
+        }
+
+        .hero-stats {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 24px;
+          max-width: 800px;
+          margin: 0 auto;
+        }
+
+        .stat-card {
+          background: rgba(255,255,255,0.05);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 16px;
+          padding: 20px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+          background: rgba(255,255,255,0.1);
+          transform: translateY(-4px);
+        }
+
+        .stat-icon {
+          font-size: 28px;
+          color: #3498db;
+        }
+
+        .stat-content {
+          text-align: left;
+        }
+
+        .stat-value {
+          font-size: 20px;
+          font-weight: 700;
+          color: white;
+          line-height: 1.2;
+        }
+
+        .stat-label {
+          font-size: 12px;
+          color: #94a3b8;
+        }
+
+        /* Main Content */
+        .portal-main {
+          padding: 60px 0;
+        }
+
+        .portal-grid {
+          display: grid;
+          grid-template-columns: 1fr 500px;
+          gap: 40px;
+          align-items: start;
+        }
+
+        /* Features Section */
+        .portal-features-section {
+          background: white;
+          border-radius: 24px;
+          padding: 40px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.02);
+          border: 1px solid #e2e8f0;
+        }
+
+        .features-header h2 {
+          font-size: 28px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 8px;
+        }
+
+        .features-header p {
+          font-size: 16px;
+          color: #64748b;
+          margin: 0 0 30px;
+        }
+
+        .features-list {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+          margin-bottom: 30px;
+        }
+
+        .feature-card {
+          display: flex;
+          align-items: flex-start;
+          gap: 16px;
+          padding: 20px;
+          background: #f8fafc;
+          border-radius: 16px;
+          transition: all 0.3s;
+        }
+
+        .feature-card:hover {
+          background: white;
+          box-shadow: 0 8px 20px rgba(0,0,0,0.04);
+          transform: translateX(4px);
+        }
+
+        .feature-icon {
+          width: 48px;
+          height: 48px;
+          background: linear-gradient(145deg, #3498db10, #2980b910);
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #3498db;
+          font-size: 24px;
+          flex-shrink: 0;
+        }
+
+        .feature-content h3 {
+          font-size: 16px;
+          font-weight: 600;
+          color: #0f172a;
+          margin: 0 0 4px;
+        }
+
+        .feature-content p {
+          font-size: 14px;
+          color: #64748b;
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        /* Testimonial */
+        .testimonial-card {
+          background: linear-gradient(145deg, #0f172a, #1e293b);
+          border-radius: 16px;
+          padding: 30px;
+          margin-bottom: 30px;
+          display: flex;
+          gap: 20px;
+          align-items: flex-start;
+        }
+
+        .testimonial-avatar {
+          width: 60px;
+          height: 60px;
+          background: #3498db;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 30px;
+          color: white;
+          flex-shrink: 0;
+        }
+
+        .testimonial-text {
+          color: white;
+          font-size: 15px;
+          line-height: 1.6;
+          margin: 0 0 12px;
+          font-style: italic;
+        }
+
+        .testimonial-author {
+          color: #94a3b8;
+          font-size: 13px;
+          margin: 0 0 8px;
+        }
+
+        .testimonial-rating {
+          color: #f59e0b;
+          display: flex;
+          gap: 2px;
+        }
+
+        /* App Promo */
+        .app-promo {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+          padding: 20px;
+          background: #f0f9ff;
+          border-radius: 16px;
+          border: 1px solid #b8e1ff;
+        }
+
+        .app-icon {
+          font-size: 40px;
+          color: #3498db;
+        }
+
+        .app-content h4 {
+          font-size: 16px;
+          font-weight: 600;
+          color: #0369a1;
+          margin: 0 0 4px;
+        }
+
+        .app-content p {
+          font-size: 13px;
+          color: #0284c7;
+          margin: 0 0 12px;
+        }
+
+        .app-buttons {
+          display: flex;
+          gap: 8px;
+        }
+
+        .app-badge {
+          padding: 6px 12px;
+          background: white;
+          border-radius: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #0284c7;
+          border: 1px solid #7dd3fc;
+        }
+
+        /* Auth Section */
+        .portal-auth-section {
+          position: sticky;
+          top: 100px;
+        }
+
+        .auth-card {
+          background: white;
+          border-radius: 24px;
+          padding: 32px;
+          box-shadow: 0 20px 40px rgba(0,0,0,0.04);
+          border: 1px solid #e2e8f0;
+        }
+
+        .auth-tabs {
+          display: flex;
+          gap: 8px;
+          margin-bottom: 32px;
+          padding: 4px;
+          background: #f8fafc;
+          border-radius: 12px;
+        }
+
+        .auth-tab {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          padding: 12px;
+          border: none;
+          background: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 600;
+          color: #64748b;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+
+        .auth-tab.active {
+          background: white;
+          color: #3498db;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+        }
+
+        .auth-form h2 {
+          font-size: 24px;
+          font-weight: 700;
+          color: #0f172a;
+          margin: 0 0 8px;
+        }
+
+        .form-subtitle {
+          color: #64748b;
+          font-size: 14px;
+          margin: 0 0 24px;
+        }
+
+        .error-message {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background: #fef2f2;
+          color: #dc2626;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          font-size: 14px;
+          border: 1px solid #fee2e2;
+        }
+
+        .success-message {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          background: #d4edda;
+          color: #059669;
+          border-radius: 8px;
+          margin-bottom: 20px;
+          font-size: 14px;
+          border: 1px solid #c3e6cb;
+        }
+
+        .input-group {
+          margin-bottom: 20px;
+        }
+
+        .input-group label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #334155;
+        }
+
+        .input-icon {
+          color: #3498db;
+          font-size: 14px;
+        }
+
+        .input-wrapper {
+          position: relative;
+        }
+
+        .input-wrapper input,
+        .input-group input,
+        .input-group select {
+          width: 100%;
+          padding: 12px 16px;
+          border: 2px solid #e2e8f0;
+          border-radius: 12px;
+          font-size: 15px;
+          transition: all 0.2s;
+          background: #f8fafc;
+        }
+
+        .input-wrapper input:focus,
+        .input-group input:focus,
+        .input-group select:focus {
+          border-color: #3498db;
+          outline: none;
+          background: white;
+        }
+
+        .input-wrapper input.error,
+        .input-group input.error,
+        .input-group select.error {
+          border-color: #dc2626;
+        }
+
+        .error-text {
+          display: block;
+          margin-top: 4px;
+          color: #dc2626;
+          font-size: 12px;
+        }
+
+        .password-wrapper {
+          position: relative;
+        }
+
+        .password-toggle {
+          position: absolute;
+          right: 12px;
+          top: 50%;
+          transform: translateY(-50%);
+          background: none;
+          border: none;
+          color: #64748b;
+          cursor: pointer;
+          font-size: 16px;
+        }
+
+        .input-hint {
+          display: block;
+          margin-top: 6px;
+          font-size: 12px;
+          color: #94a3b8;
+        }
+
+        .form-row {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          margin-bottom: 0;
+        }
+
+        .form-options {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin: 20px 0;
+        }
+
+        .checkbox-label {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 14px;
+          color: #475569;
+          cursor: pointer;
+        }
+
+        .forgot-link {
+          color: #3498db;
+          font-size: 14px;
+          text-decoration: none;
+        }
+
+        .forgot-link:hover {
+          text-decoration: underline;
+        }
+
+        .submit-btn {
+          width: 100%;
+          padding: 14px;
+          background: linear-gradient(145deg, #3498db, #2980b9);
+          color: white;
+          border: none;
+          border-radius: 12px;
+          font-size: 16px;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all 0.3s;
+          box-shadow: 0 4px 12px rgba(52,152,219,0.3);
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          transform: translateY(-2px);
+          box-shadow: 0 8px 20px rgba(52,152,219,0.4);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+
+        .register-btn {
+          background: linear-gradient(145deg, #10b981, #059669);
+          box-shadow: 0 4px 12px rgba(16,185,129,0.3);
+        }
+
+        .register-btn:hover:not(:disabled) {
+          box-shadow: 0 8px 20px rgba(16,185,129,0.4);
+        }
+
+        .spin {
+          animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+
+        .social-login {
+          margin-top: 24px;
+          text-align: center;
+        }
+
+        .social-login p {
+          color: #64748b;
+          font-size: 13px;
+          margin-bottom: 12px;
+          position: relative;
+        }
+
+        .social-login p::before,
+        .social-login p::after {
+          content: '';
+          position: absolute;
+          top: 50%;
+          width: 30%;
+          height: 1px;
+          background: #e2e8f0;
+        }
+
+        .social-login p::before {
+          left: 0;
+        }
+
+        .social-login p::after {
+          right: 0;
+        }
+
+        .social-icons {
+          display: flex;
+          justify-content: center;
+          gap: 16px;
+        }
+
+        .social-icons svg {
+          font-size: 24px;
+          color: #64748b;
+          cursor: pointer;
+          transition: all 0.3s;
+        }
+
+        .social-icons svg:hover {
+          color: #3498db;
+          transform: translateY(-2px);
+        }
+
+        .auth-footer {
+          text-align: center;
+          margin-top: 24px;
+          padding-top: 24px;
+          border-top: 1px solid #e2e8f0;
+        }
+
+        .auth-footer p {
+          color: #64748b;
+          font-size: 14px;
+          margin: 0;
+        }
+
+        .auth-footer button {
+          background: none;
+          border: none;
+          color: #3498db;
+          font-weight: 600;
+          cursor: pointer;
+          font-size: 14px;
+          text-decoration: underline;
+        }
+
+        .auth-footer button:hover {
+          color: #2980b9;
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+          .portal-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .portal-auth-section {
+            position: static;
+          }
+
+          .hero-stats {
+            grid-template-columns: repeat(2, 1fr);
+          }
+
+          .hero-title {
+            font-size: 48px;
+          }
+
+          .title-urdu {
+            font-size: 36px;
+          }
+        }
+
+        @media (max-width: 768px) {
+          .portal-hero {
+            padding: 60px 0;
+          }
+
+          .hero-title {
+            font-size: 40px;
+          }
+
+          .title-urdu {
+            font-size: 30px;
+          }
+
+          .hero-stats {
+            grid-template-columns: 1fr;
+            max-width: 400px;
+          }
+
+          .form-row {
+            grid-template-columns: 1fr;
+            gap: 0;
+          }
+
+          .testimonial-card {
+            flex-direction: column;
+            text-align: center;
+          }
+
+          .testimonial-avatar {
+            margin: 0 auto;
+          }
+
+          .app-promo {
+            flex-direction: column;
+            text-align: center;
+          }
+        }
+      `}</style>
     </div>
   );
 };

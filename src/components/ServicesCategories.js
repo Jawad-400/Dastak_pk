@@ -26,7 +26,7 @@ const ServicesCategories = () => {
       <div className="services-grid">
         {services.map(service => (
           <div key={service.id} className="service-card">
-            <div className="service-icon">{service.icon}</div>
+            <div className="service-icon"><service.icon /></div>
             <h3>{service.name}</h3>
             <a href={`#request-${service.name.toLowerCase()}`} className="btn-service">
               Request

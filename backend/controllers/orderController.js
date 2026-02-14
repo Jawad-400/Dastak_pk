@@ -95,14 +95,8 @@ exports.completeRequest = async (req, res) => {
 exports.createRequest = async (req, res) => {
   try {
     const { 
-      title, 
-      description, 
-      location, 
-      budget, 
-      customerId,
-      serviceType, 
-      schedule, 
-      contact 
+      title, description, location, locationCoords, budget, 
+      customerId, serviceType, schedule, contact 
     } = req.body;
 
     // Validate
@@ -113,35 +107,26 @@ exports.createRequest = async (req, res) => {
       });
     }
 
-    // ✅ FIXED: MongoDB connection
     const db = await mongoDB.connect();
     const ordersCollection = db.collection('orders');
 
     const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Get customer name from MySQL
-    let customerName = 'Customer';
-    try {
-      const [customers] = await mysqlDB.pool.execute(
-        'SELECT name FROM users WHERE id = ?',
-        [customerId]
-      );
-      if (customers.length > 0) {
-        customerName = customers[0].name;
-      }
-    } catch (dbError) {
-      console.error('Error fetching customer name:', dbError);
-    }
-
+    // ✅ FIX: Ensure coordinates are saved with correct format
     const request = {
       id: requestId,
       title,
       description,
       location,
+      locationCoords: locationCoords ? {  // ✅ Save coordinates!
+        lat: Number(locationCoords.lat),
+        lng: Number(locationCoords.lng),
+        address: locationCoords.address || location
+      } : null,
       budget: budget || '0',
       customerId: customerId.toString(),
-      customerName,
-      serviceType: serviceType ,
+      customerName: req.user?.name || 'Customer',
+      serviceType: serviceType || 'general',
       schedule: schedule || 'ASAP',
       contact: contact || '',
       status: 'pending',
@@ -150,6 +135,9 @@ exports.createRequest = async (req, res) => {
     };
 
     await ordersCollection.insertOne(request);
+    
+    // ✅ DEBUG - Log saved coordinates
+    console.log('✅ Request saved with coordinates:', request.locationCoords);
     
     // Broadcast via WebSocket
     if (global.wss) {

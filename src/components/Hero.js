@@ -7,6 +7,7 @@ import {
   FaRupeeSign, FaTrophy, FaHeart, FaShare
 } from 'react-icons/fa';
 import { socket } from '../Services/socket';
+import { SERVICE_TYPES } from '../components/serviceTypes';
 
 const Hero = () => {
   const navigate = useNavigate();
@@ -16,6 +17,10 @@ const Hero = () => {
   const [selectedCity, setSelectedCity] = useState('');
   const [showStats, setShowStats] = useState(false);
 
+  // Helper function to render icon
+const renderIcon = (Icon, color) => {
+  return <Icon style={{ color }} size={24} />;
+};
   // Real-time live requests counter
   useEffect(() => {
     // Simulate real-time updates
@@ -54,16 +59,6 @@ const Hero = () => {
   const cities = [
     'Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 
     'Faisalabad', 'Multan', 'Peshawar', 'Quetta'
-  ];
-
-  // Featured services
-  const featuredServices = [
-    { id: 1, name: 'Plumbing', icon: '🔧', count: 1234, color: '#3498db' },
-    { id: 2, name: 'Electrical', icon: '⚡', count: 987, color: '#f39c12' },
-    { id: 3, name: 'AC Repair', icon: '❄️', count: 756, color: '#00bcd4' },
-    { id: 4, name: 'Cleaning', icon: '🧹', count: 892, color: '#2ecc71' },
-    { id: 5, name: 'Painting', icon: '🎨', count: 543, color: '#e74c3c' },
-    { id: 6, name: 'Carpentry', icon: '🔨', count: 421, color: '#9b59b6' },
   ];
 
   // Real-time active requests
@@ -192,21 +187,23 @@ const Hero = () => {
             </button>
           </div>
 
-          {/* Featured Services */}
+          {/* Featured Services - FIXED SECTION */}
           <div className="featured-services">
             <h3>Popular Services</h3>
             <div className="services-grid">
-              {featuredServices.map(service => (
+              {SERVICE_TYPES.slice(0, 8).map(service => (
                 <div 
                   key={service.id} 
                   className="service-card"
                   style={{ borderTop: `3px solid ${service.color}` }}
                   onClick={() => navigate(`/services?category=${service.name.toLowerCase()}`)}
                 >
-                  <span className="service-icon">{service.icon}</span>
+<span className="service-icon">
+  {renderIcon(service.icon, service.color)}
+</span>
                   <div className="service-info">
                     <h4>{service.name}</h4>
-                    <p>{service.count.toLocaleString()}+ jobs</p>
+                    <p>{Math.floor(Math.random() * 1000) + 500}+ jobs</p>
                   </div>
                   <FaArrowRight className="service-arrow" />
                 </div>
@@ -230,6 +227,8 @@ const Hero = () => {
               </div>
             ))}
           </div>
+
+          {/* Rest of your component remains the same... */}
 
           {/* CTA Buttons */}
           <div className="hero-cta">

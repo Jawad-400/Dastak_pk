@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
+import { LocationProvider } from './context/LocationContext';
 
 // Layout Components
 import Header from './components/Header';
@@ -28,18 +29,14 @@ import Allservices from './components/provider/Allservices';
 import PlaceorderModal from './components/PostRequest';
 import MyOrders from './components/provider/MyOrders';
 
-// WebSocket Components
-import FindJobs from './components/provider/Allservices';
-
 import './styles.css';
 
-// Home Page Component - WITHOUT HowItWorks (since it has its own route now)
+// Home Page Component
 function HomePage() {
   return (
     <>
       <Hero />
       <ServicesCategories />
-      {/* REMOVED HowItWorks from here - it now has its own page */}
       <div className="action-sections">
         <PostRequest />
       </div>
@@ -49,13 +46,9 @@ function HomePage() {
   );
 }
 
-// How It Works Page - Full page version
+// How It Works Page
 function HowItWorksPage() {
-  return (
-    <>
-      <HowItWorks />
-    </>
-  );
+  return <HowItWorks />;
 }
 
 // Provider Portal Page
@@ -73,19 +66,19 @@ function CustomerLoginPage() {
   return <CustomerLogin />;
 }
 
-// Main App Component with conditional header/footer
+// Main App Component
 function AppContent() {
   const location = useLocation();
   
   // Hide header on provider pages
   const hideHeader = location.pathname.includes('/provider-dashboard') || 
                      location.pathname.includes('/my-orders') || 
-                     location.pathname.includes('/find-jobs') 
+                     location.pathname.includes('/find-jobs');
   
   // Hide footer on provider pages
   const hideFooter = location.pathname.includes('/provider-dashboard') || 
                      location.pathname.includes('/my-orders') || 
-                     location.pathname.includes('/find-jobs') 
+                     location.pathname.includes('/find-jobs');
 
   return (
     <div className="App">
@@ -93,13 +86,11 @@ function AppContent() {
       <Routes>
         {/* Home & Main Routes */}
         <Route path="/" element={<HomePage />} />
-        <Route path="/services" element={<FindJobs />} />
+        <Route path="/services" element={<Allservices />} />
         <Route path="/post-request" element={<PostRequest />} />
         <Route path="/customer-login" element={<CustomerLoginPage />} />
         <Route path="/customer-portal" element={<CustomerOrderTracking />} />
         <Route path="/customer-orders" element={<CustomerOrderTracking />} />
-        
-        {/* ✅ FIXED: How It Works Route - Now works correctly */}
         <Route path="/how-it-works" element={<HowItWorksPage />} />
         
         {/* Provider Routes */}
@@ -107,10 +98,8 @@ function AppContent() {
         <Route path="/provider-dashboard" element={<ProviderDashboardPage />} />
         <Route path="/provider/jobs" element={<Allservices />} />
         <Route path="/provider/place-order" element={<PlaceorderModal />} />
-        
-        {/* Provider Routes */}
-        <Route path="/my-orders" element={<ProviderDashboard />} />
-        <Route path="/find-jobs" element={<FindJobs />} />
+        <Route path="/my-orders" element={<MyOrders />} />
+        <Route path="/find-jobs" element={<Allservices />} />
       </Routes>
       {!hideFooter && <Footer />}
     </div>
@@ -121,7 +110,9 @@ function AppContent() {
 function App() {
   return (
     <Router>
-      <AppContent />
+      <LocationProvider>
+        <AppContent />
+      </LocationProvider>
     </Router>
   );
 }

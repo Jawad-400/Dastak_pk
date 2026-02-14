@@ -7,6 +7,8 @@ import {
   FaClock, FaStar, FaUsers, FaHandshake
 } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
+import { SERVICE_TYPES, SERVICE_VALUES } from '../components/serviceTypes'; 
+
 
 const Footer = () => {
   const navigate = useNavigate();
@@ -16,17 +18,11 @@ const Footer = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const quickServices = [
-    { name: 'Plumbing', icon: <FaWrench />, path: '/services?category=plumbing' },
-    { name: 'Electrical', icon: <FaBolt />, path: '/services?category=electrical' },
-    { name: 'AC Repair', icon: <FaSnowflake />, path: '/services?category=ac-repair' },
-    { name: 'Painting', icon: <FaPaintBrush />, path: '/services?category=painting' },
-    { name: 'Carpentry', icon: <FaHammer />, path: '/services?category=carpentry' },
-    { name: 'Cleaning', icon: <FaBroom />, path: '/services?category=cleaning' },
-    { name: 'Appliance', icon: <FaTv />, path: '/services?category=appliance' },
-    { name: 'Pest Control', icon: <FaBug />, path: '/services?category=pest-control' },
-    { name: 'Car Service', icon: <FaCar />, path: '/services?category=car-service' },
-  ];
+  {SERVICE_TYPES.map(service => (
+    <option key={service.value} value={service.value}>
+      {service.name}
+    </option>
+  ))}
 
   const companyLinks = [
     { name: 'About Us', path: '/about' },
@@ -145,10 +141,10 @@ const Footer = () => {
             <div className="footer-col">
               <h3>Quick Services</h3>
               <ul className="footer-links">
-                {quickServices.map((service, index) => (
+                {SERVICE_TYPES.map((service, index) => (
                   <li key={index}>
                     <Link to={service.path}>
-                      {service.icon} {service.name}
+                    <service.icon /> {service.name}
                     </Link>
                   </li>
                 ))}
