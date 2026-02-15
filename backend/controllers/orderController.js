@@ -38,130 +38,6 @@ exports.getRequests = async (req, res) => {
   }
 };
 
-// ==================== COMPLETE REQUEST ====================
-exports.completeRequest = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const db = await mongoDB.connect();
-    const ordersCollection = db.collection('orders');
-
-    const result = await ordersCollection.updateOne(
-      { id },
-      {
-        $set: {
-          status: 'completed',
-          completedAt: new Date(),
-          updatedAt: new Date()
-        }
-      }
-    );
-
-    if (result.matchedCount === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Request not found'
-      });
-    }
-
-    const updatedRequest = await ordersCollection.findOne({ id });
-
-    // Broadcast via WebSocket
-    if (global.wss) {
-      global.wss.sendToUser(updatedRequest.customerId, {
-        event: 'order_completed',
-        data: {
-          requestId: id,
-          message: 'Your service request has been marked as completed'
-        }
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Request completed successfully',
-      data: updatedRequest
-    });
-
-  } catch (error) {
-    console.error('❌ Complete request error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-};
-
-// ==================== CREATE REQUEST ====================
-exports.createRequest = async (req, res) => {
-  try {
-    const { 
-      title, description, location, locationCoords, budget, 
-      customerId, serviceType, schedule, contact 
-    } = req.body;
-
-    // Validate
-    if (!title || !location || !customerId) {
-      return res.status(400).json({
-        success: false,
-        error: 'Missing required fields'
-      });
-    }
-
-    const db = await mongoDB.connect();
-    const ordersCollection = db.collection('orders');
-
-    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-    // ✅ FIX: Ensure coordinates are saved with correct format
-    const request = {
-      id: requestId,
-      title,
-      description,
-      location,
-      locationCoords: locationCoords ? {  // ✅ Save coordinates!
-        lat: Number(locationCoords.lat),
-        lng: Number(locationCoords.lng),
-        address: locationCoords.address || location
-      } : null,
-      budget: budget || '0',
-      customerId: customerId.toString(),
-      customerName: req.user?.name || 'Customer',
-      serviceType: serviceType || 'general',
-      schedule: schedule || 'ASAP',
-      contact: contact || '',
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    await ordersCollection.insertOne(request);
-    
-    // ✅ DEBUG - Log saved coordinates
-    console.log('✅ Request saved with coordinates:', request.locationCoords);
-    
-    // Broadcast via WebSocket
-    if (global.wss) {
-      global.wss.broadcastToProviders(serviceType, {
-        event: 'new_request',
-        data: request
-      });
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Request created successfully',
-      data: request
-    });
-
-  } catch (error) {
-    console.error('❌ Create request error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-};
-
 // ==================== GET SINGLE REQUEST ====================
 exports.getRequest = async (req, res) => {
   try {
@@ -184,6 +60,85 @@ exports.getRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Get request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+// ==================== CREATE REQUEST ====================
+exports.createRequest = async (req, res) => {
+  try {
+    const { 
+      title, description, location, locationCoords, budget, 
+      customerId, customerName, serviceType, schedule, contact 
+    } = req.body;
+
+    // Validate
+    if (!title || !location || !customerId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required fields'
+      });
+    }
+
+    const db = await mongoDB.connect();
+    const ordersCollection = db.collection('orders');
+
+    const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // ✅ Save coordinates with correct format
+    const request = {
+      id: requestId,
+      title,
+      description,
+      location,
+      locationCoords: locationCoords ? {
+        lat: Number(locationCoords.lat),
+        lng: Number(locationCoords.lng),
+        address: locationCoords.address || location
+      } : null,
+      budget: budget || 'Negotiable',
+      customerId: customerId.toString(),
+      customerName: customerName || req.user?.name || 'Customer',
+      serviceType: serviceType || 'general',
+      service_type: serviceType || 'general', // For compatibility
+      schedule: schedule || 'ASAP',
+      contact: contact || '',
+      status: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    await ordersCollection.insertOne(request);
+    
+    console.log('✅ Request saved with coordinates:', request.locationCoords);
+    console.log('🔧 Service Type:', request.serviceType);
+    
+    // ✅ Broadcast to providers via WebSocket
+    if (global.wss && typeof global.wss.broadcastToProviders === 'function') {
+      try {
+        await global.wss.broadcastToProviders(serviceType, {
+          event: 'new_request',
+          data: request
+        });
+        console.log(`📢 Broadcasted new ${serviceType} request to providers`);
+      } catch (wsError) {
+        console.error('❌ WebSocket broadcast error:', wsError);
+      }
+    } else {
+      console.warn('⚠️ WebSocket server not available for broadcasting');
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Request created successfully',
+      data: request
+    });
+
+  } catch (error) {
+    console.error('❌ Create request error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -252,23 +207,27 @@ exports.acceptRequest = async (req, res) => {
 
     const updatedRequest = await ordersCollection.findOne({ id });
 
-    // Broadcast via WebSocket
+    // ✅ Broadcast via WebSocket
     if (global.wss) {
+      // Notify customer
       global.wss.sendToUser(request.customerId, {
         event: 'request_accepted',
         data: {
           requestId: id,
           providerName,
-          providerId
+          providerId,
+          message: `${providerName} has accepted your request`
         }
       });
 
+      // Notify other providers that this request is taken
       global.wss.broadcastToType('provider', {
         event: 'request_taken',
         data: {
-          requestId: id,
+          request_id: id,
           providerName,
-          serviceType: request.serviceType
+          serviceType: request.serviceType,
+          message: `This request has been accepted by ${providerName}`
         }
       });
     }
@@ -294,6 +253,15 @@ exports.completeRequest = async (req, res) => {
     const db = await mongoDB.connect();
     const ordersCollection = db.collection('orders');
 
+    const request = await ordersCollection.findOne({ id });
+    
+    if (!request) {
+      return res.status(404).json({
+        success: false,
+        error: 'Request not found'
+      });
+    }
+
     const result = await ordersCollection.updateOne(
       { id },
       {
@@ -314,6 +282,18 @@ exports.completeRequest = async (req, res) => {
 
     const updatedRequest = await ordersCollection.findOne({ id });
 
+    // ✅ Notify customer via WebSocket
+    if (global.wss) {
+      global.wss.sendToUser(request.customerId, {
+        event: 'order_completed',
+        data: {
+          requestId: id,
+          message: 'Your service request has been marked as completed',
+          completedAt: new Date()
+        }
+      });
+    }
+
     res.json({
       success: true,
       message: 'Request completed successfully',
@@ -321,6 +301,49 @@ exports.completeRequest = async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Complete request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+// ==================== GET USER REQUESTS ====================
+exports.getUserRequests = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type } = req.query; // 'customer' or 'provider'
+    
+    console.log(`📋 Fetching requests for user: ${userId}, type: ${type}`);
+    
+    const db = await mongoDB.connect();
+    const ordersCollection = db.collection('orders');
+    
+    let query = {};
+    if (type === 'customer') {
+      query.customerId = userId;
+      console.log(`👤 Customer query:`, query);
+    } else if (type === 'provider') {
+      query.providerId = userId;
+    }
+    
+    const requests = await ordersCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .toArray();
+      
+    console.log(`✅ Found ${requests.length} requests`);
+    
+    res.json({
+      success: true,
+      data: {
+        requests,
+        count: requests.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Get user requests error:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
@@ -349,4 +372,39 @@ exports.verifyPayment = async (req, res) => {
       timestamp: new Date().toISOString()
     }
   });
+};
+
+// ==================== RATE REQUEST ====================
+exports.rateRequest = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rating, review, customerId, providerId } = req.body;
+    
+    const db = await mongoDB.connect();
+    const ordersCollection = db.collection('orders');
+    
+    await ordersCollection.updateOne(
+      { id },
+      {
+        $set: {
+          rating,
+          review,
+          ratedAt: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    );
+    
+    res.json({
+      success: true,
+      message: 'Rating submitted successfully'
+    });
+    
+  } catch (error) {
+    console.error('❌ Rate request error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
 };

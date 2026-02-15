@@ -68,6 +68,7 @@ function CustomerLoginPage() {
 
 // Main App Component
 function AppContent() {
+
   const location = useLocation();
   
   // Hide header on provider pages

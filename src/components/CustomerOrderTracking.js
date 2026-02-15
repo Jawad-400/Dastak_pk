@@ -84,34 +84,9 @@ const CustomerOrderTracking = () => {
   }, [chats]);
 
   // Load messages from localStorage for each chat
-  useEffect(() => {
-    const loadAllMessages = () => {
-      const storedMessages = {};
-      chats.forEach(chat => {
-        try {
-          const savedMessages = localStorage.getItem(`chat_${chat.id}_messages`);
-          if (savedMessages) {
-            storedMessages[chat.id] = JSON.parse(savedMessages);
-          }
-        } catch (e) {
-          console.error(`Error loading messages for chat ${chat.id}:`, e);
-        }
-      });
-      if (Object.keys(storedMessages).length > 0) {
-        setMessages(prev => ({ ...prev, ...storedMessages }));
-      }
-    };
-    loadAllMessages();
-  }, [chats.length]);
 
   // Save messages to localStorage when they change
-  useEffect(() => {
-    Object.entries(messages).forEach(([chatId, chatMessages]) => {
-      if (chatMessages.length > 0) {
-        localStorage.setItem(`chat_${chatId}_messages`, JSON.stringify(chatMessages));
-      }
-    });
-  }, [messages]);
+
 
   // Scroll to bottom when new messages arrive
   useEffect(() => {
@@ -170,6 +145,35 @@ const CustomerOrderTracking = () => {
       return () => clearTimeout(timer);
     }
   }, [newMessageNotification]);
+
+  useEffect(() => {
+    if (customerInfo?.id) {
+      loadMessagesFromServer();
+    }
+  }, [customerInfo?.id]);
+
+  
+  const loadMessagesFromServer = async () => {
+    try {
+      if (!customerInfo?.id) return;
+      
+      const token = localStorage.getItem('token');
+      const response = await fetch(`http://localhost:4000/api/messages/${customerInfo.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('📥 Loaded messages from server');
+        setMessages(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading messages:', error);
+    }
+  };
 
   // Fetch customer's requests
   useEffect(() => {
@@ -398,6 +402,9 @@ const CustomerOrderTracking = () => {
       }
     };
 
+    
+
+
     const handleMessageRead = (data) => {
       const { chatId } = data;
       
@@ -486,6 +493,9 @@ const CustomerOrderTracking = () => {
       Notification.requestPermission();
     }
   }, []);
+
+  // Add this useEffect to load messages when customer info is available
+
 
   // Send message
   const sendMessage = () => {

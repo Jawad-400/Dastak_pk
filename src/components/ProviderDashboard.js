@@ -162,6 +162,32 @@ const ProviderDashboard = () => {
   // Track processed job IDs to prevent duplicates
   const processedJobIds = useRef(new Set());
 
+  // Add this function to load messages from server
+const loadMessagesFromServer = async () => {
+  try {
+    if (!providerInfo?.id) return;
+    
+    const token = localStorage.getItem('token');
+    const response = await fetch(`http://localhost:4000/api/messages/${providerInfo.id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    
+    const data = await response.json();
+    
+    if (data.success) {
+      console.log('📥 Loaded messages from server');
+      setMessages(data.data);
+    }
+  } catch (error) {
+    console.error('Error loading messages:', error);
+  }
+};
+
+// Add this useEffect
+
+
   // ============ LOAD ALL DATA FROM LOCALSTORAGE ============
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -239,6 +265,12 @@ const ProviderDashboard = () => {
       }
     }
   }, [totalEarnings]);
+
+  useEffect(() => {
+    if (providerInfo?.id) {
+      loadMessagesFromServer();
+    }
+  }, [providerInfo?.id]);
 
   // ============ SAVE DATA TO LOCALSTORAGE ============
   // Save accepted jobs (with 30-day expiry)
@@ -329,35 +361,8 @@ useEffect(() => {
     }
   }, [chats]);
 
-  // ============ LOAD MESSAGES ============
-  useEffect(() => {
-    const loadAllMessages = () => {
-      const storedMessages = {};
-      chats.forEach(chat => {
-        try {
-          const savedMessages = localStorage.getItem(`chat_${chat.id}_messages`);
-          if (savedMessages) {
-            storedMessages[chat.id] = JSON.parse(savedMessages);
-          }
-        } catch (e) {
-          console.error(`Error loading messages for chat ${chat.id}:`, e);
-        }
-      });
-      if (Object.keys(storedMessages).length > 0) {
-        setMessages(prev => ({ ...prev, ...storedMessages }));
-      }
-    };
-    loadAllMessages();
-  }, [chats.length]);
 
-  // ============ SAVE MESSAGES ============
-  useEffect(() => {
-    Object.entries(messages).forEach(([chatId, chatMessages]) => {
-      if (chatMessages.length > 0) {
-        localStorage.setItem(`chat_${chatId}_messages`, JSON.stringify(chatMessages));
-      }
-    });
-  }, [messages]);
+
 
   // ============ CLEAN EXPIRED REQUESTS (30 days) ============
   useEffect(() => {
