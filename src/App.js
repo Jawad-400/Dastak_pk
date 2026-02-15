@@ -29,6 +29,23 @@ import Allservices from './components/provider/Allservices';
 import PlaceorderModal from './components/PostRequest';
 import MyOrders from './components/provider/MyOrders';
 
+//==============================footer pages =============================//
+
+import About from './components/About';
+import Careers from './components/Careers';
+import Blog from './components/Blog';
+import Press from './components/Press';
+import HelpCenter from './components/HelpCenter';
+import SafetyCenter from './components/SafetyCenter';
+import FAQs from './components/FAQs';
+import Terms from './components/Terms';
+import Privacy from './components/Privacy';
+import Cookies from './components/Cookies';
+import Disclaimer from './components/Disclaimer';
+import Sitemap from './components/Sitemap';
+import Contact from './components/Contact';
+
+
 import './styles.css';
 
 // Home Page Component
@@ -101,6 +118,22 @@ function AppContent() {
         <Route path="/provider/place-order" element={<PlaceorderModal />} />
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/find-jobs" element={<Allservices />} />
+
+        {/*footer pages routes*/}
+        <Route path="/about" element={<About />} />
+<Route path="/careers" element={<Careers />} />
+<Route path="/blog" element={<Blog />} />
+<Route path="/press" element={<Press />} />
+<Route path="/help" element={<HelpCenter />} />
+<Route path="/safety" element={<SafetyCenter />} />
+<Route path="/faqs" element={<FAQs />} />
+<Route path="/terms" element={<Terms />} />
+<Route path="/privacy" element={<Privacy />} />
+<Route path="/cookies" element={<Cookies />} />
+<Route path="/disclaimer" element={<Disclaimer />} />
+<Route path="/sitemap" element={<Sitemap />} />
+<Route path="/contact" element={<Contact />} />
+
       </Routes>
       {!hideFooter && <Footer />}
     </div>

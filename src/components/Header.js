@@ -292,7 +292,7 @@ const Header = () => {
 
         .logo-urdu {
           font-size: 18px;
-          color: #7f8c8d;
+          color: #0ea5e9;
           font-family: 'Noto Nastaliq Urdu', 'Jameel Noori Nastaleeq', serif;
           line-height: 1;
           margin-left: 4px;

@@ -790,9 +790,9 @@ const Hero = () => {
         /* Title */
         .hero-title {
           margin: 0 0 15px;
-          font-size: 64px;
+          font-size: clamp(2rem, 8vw, 4rem);
           font-weight: 800;
-          line-height: 1.1;
+          line-height: 1.2;
         }
 
         .title-dastak {

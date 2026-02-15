@@ -24,28 +24,30 @@ const Footer = () => {
     </option>
   ))}
 
-  const companyLinks = [
-    { name: 'About Us', path: '/about' },
-    { name: 'Careers', path: '/careers' },
-    { name: 'Blog', path: '/blog' },
-    { name: 'Press', path: '/press' },
-    { name: 'Contact', path: '/contact' },
-  ];
+// In your Footer.js, update the link arrays:
 
-  const supportLinks = [
-    { name: 'Help Center', path: '/help' },
-    { name: 'Safety Center', path: '/safety' },
-    { name: 'Community Guidelines', path: '/guidelines' },
-    { name: 'FAQs', path: '/faqs' },
-    { name: 'Report an Issue', path: '/report' },
-  ];
+const companyLinks = [
+  { name: 'About Us', path: '/about' },
+  { name: 'Careers', path: '/careers' },
+  { name: 'Blog', path: '/blog' },
+  { name: 'Press', path: '/press' },
+  { name: 'Contact', path: '/contact' },
+];
 
-  const legalLinks = [
-    { name: 'Privacy Policy', path: '/privacy' },
-    { name: 'Terms of Use', path: '/terms' },
-    { name: 'Cookie Policy', path: '/cookies' },
-    { name: 'Disclaimer', path: '/disclaimer' },
-  ];
+const supportLinks = [
+  { name: 'Help Center', path: '/help' },
+  { name: 'Safety Center', path: '/safety' },
+  { name: 'FAQs', path: '/faqs' },
+  { name: 'Report an Issue', path: '/report' },
+  { name: 'Sitemap', path: '/sitemap' },
+];
+
+const legalLinks = [
+  { name: 'Privacy Policy', path: '/privacy' },
+  { name: 'Terms of Use', path: '/terms' },
+  { name: 'Cookie Policy', path: '/cookies' },
+  { name: 'Disclaimer', path: '/disclaimer' },
+];
 
   const socialLinks = [
     { icon: <FaFacebook />, url: 'https://facebook.com/dastakpk', label: 'Facebook', color: '#1877f2' },
