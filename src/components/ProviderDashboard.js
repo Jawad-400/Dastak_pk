@@ -29,7 +29,7 @@ const ProviderDashboard = () => {
   
   const { 
     userLocation = null, 
-    detectLocation = () => {},
+    detectLocation: contextDetectLocation = () => {},
     loading: locationLoading = false,
     locationError = null,
     userAddress = ''
@@ -70,6 +70,9 @@ const ProviderDashboard = () => {
   const [maxDistance, setMaxDistance] = useState(10);
   const [showMap, setShowMap] = useState(false);
   const [nearbyProviders, setNearbyProviders] = useState([]);
+  const [locationDetectionStatus, setLocationDetectionStatus] = useState('');
+  const [locationCoords, setLocationCoords] = useState(null);
+  const [locationAddress, setLocationAddress] = useState('');
   
   // Provider info from localStorage
   const [providerInfo, setProviderInfo] = useState({
@@ -162,31 +165,111 @@ const ProviderDashboard = () => {
   // Track processed job IDs to prevent duplicates
   const processedJobIds = useRef(new Set());
 
-  // Add this function to load messages from server
-const loadMessagesFromServer = async () => {
-  try {
-    if (!providerInfo?.id) return;
+  // Handle responsive sidebar
+  useEffect(() => {
+    const handleResize = () => {
+      setSidebarCollapsed(window.innerWidth < 768);
+    };
     
-    const token = localStorage.getItem('token');
-    const response = await fetch(`${process.env.REACT_APP_API_URL}/messages/${providerInfo.id}`, {
-      headers: {
-        'Authorization': `Bearer ${token}`
+    window.addEventListener('resize', handleResize);
+    handleResize(); // Set initial state
+    
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Load messages from server
+  const loadMessagesFromServer = async () => {
+    try {
+      if (!providerInfo?.id) return;
+      
+      const token = localStorage.getItem('token');
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/messages/${providerInfo.id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('📥 Loaded messages from server');
+        setMessages(data.data);
       }
-    });
-    
-    const data = await response.json();
-    
-    if (data.success) {
-      console.log('📥 Loaded messages from server');
-      setMessages(data.data);
+    } catch (error) {
+      console.error('Error loading messages:', error);
     }
-  } catch (error) {
-    console.error('Error loading messages:', error);
-  }
-};
+  };
 
-// Add this useEffect
+  // Location detection handler
+  const handleDetectLocation = async () => {
+    setLocationDetectionStatus('detecting');
+    
+    if (!navigator.geolocation) {
+      setLocationDetectionStatus('error');
+      addNotification('error', 'Geolocation is not supported by your browser');
+      return;
+    }
 
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          
+          // Reverse geocoding to get address
+          const response = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`
+          );
+          const data = await response.json();
+          
+          const address = data.display_name || `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+          
+          // Update location context if available
+          if (contextDetectLocation) {
+            contextDetectLocation();
+          }
+          
+          // Update local state
+          setLocationCoords({
+            lat: latitude,
+            lng: longitude,
+            address: address
+          });
+          
+          setLocationAddress(address);
+          setLocationDetectionStatus('success');
+          addNotification('success', 'Location detected successfully');
+          
+        } catch (error) {
+          console.error('Error getting address:', error);
+          setLocationDetectionStatus('error');
+          addNotification('error', 'Failed to get your location');
+        }
+      },
+      (error) => {
+        console.error('Geolocation error:', error);
+        setLocationDetectionStatus('error');
+        
+        let errorMessage = 'Failed to detect location';
+        switch(error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Please allow location access in your browser settings';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location information is unavailable';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out';
+            break;
+        }
+        addNotification('error', errorMessage);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
+  };
 
   // ============ LOAD ALL DATA FROM LOCALSTORAGE ============
   useEffect(() => {
@@ -232,7 +315,6 @@ const loadMessagesFromServer = async () => {
         const savedAcceptedJobs = localStorage.getItem('provider_accepted_jobs');
         if (savedAcceptedJobs) {
           const parsed = JSON.parse(savedAcceptedJobs);
-          // Filter out jobs older than 30 days
           const thirtyDaysAgo = new Date();
           thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
           
@@ -273,74 +355,64 @@ const loadMessagesFromServer = async () => {
   }, [providerInfo?.id]);
 
   // ============ SAVE DATA TO LOCALSTORAGE ============
-  // Save accepted jobs (with 30-day expiry)
   useEffect(() => {
     if (acceptedJobs.length > 0) {
       localStorage.setItem('provider_accepted_jobs', JSON.stringify(acceptedJobs));
     }
   }, [acceptedJobs]);
 
-  // Add this to your ProviderDashboard.js
-useEffect(() => {
-  // Load all saved data on mount
-  const loadSavedData = () => {
-    // Load accepted jobs
-    const savedAccepted = localStorage.getItem('provider_accepted_jobs');
-    if (savedAccepted) {
-      const parsed = JSON.parse(savedAccepted);
-      // Filter out jobs older than 30 days
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      const validJobs = parsed.filter(job => new Date(job.acceptedAt) > thirtyDaysAgo);
-      setAcceptedJobs(validJobs);
-    }
+  useEffect(() => {
+    // Load all saved data on mount
+    const loadSavedData = () => {
+      const savedAccepted = localStorage.getItem('provider_accepted_jobs');
+      if (savedAccepted) {
+        const parsed = JSON.parse(savedAccepted);
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const validJobs = parsed.filter(job => new Date(job.acceptedAt) > thirtyDaysAgo);
+        setAcceptedJobs(validJobs);
+      }
+      
+      const savedCompleted = localStorage.getItem('provider_completed_jobs');
+      if (savedCompleted) setCompletedJobs(JSON.parse(savedCompleted));
+      
+      const savedRequests = localStorage.getItem('provider_pending_requests');
+      if (savedRequests) {
+        const sevenDaysAgo = new Date();
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+        const validRequests = JSON.parse(savedRequests).filter(
+          req => new Date(req.time) > sevenDaysAgo
+        );
+        setRealTimeRequests(validRequests);
+      }
+      
+      const savedChats = localStorage.getItem('provider_chats');
+      if (savedChats) setChats(JSON.parse(savedChats));
+      
+      const savedMessages = {};
+      const chats = JSON.parse(savedChats || '[]');
+      chats.forEach(chat => {
+        const msgs = localStorage.getItem(`chat_${chat.id}_messages`);
+        if (msgs) savedMessages[chat.id] = JSON.parse(msgs);
+      });
+      if (Object.keys(savedMessages).length > 0) setMessages(savedMessages);
+    };
     
-    // Load completed jobs
-    const savedCompleted = localStorage.getItem('provider_completed_jobs');
-    if (savedCompleted) setCompletedJobs(JSON.parse(savedCompleted));
-    
-    // Load pending requests (keep for 7 days)
-    const savedRequests = localStorage.getItem('provider_pending_requests');
-    if (savedRequests) {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const validRequests = JSON.parse(savedRequests).filter(
-        req => new Date(req.time) > sevenDaysAgo
-      );
-      setRealTimeRequests(validRequests);
-    }
-    
-    // Load chats
-    const savedChats = localStorage.getItem('provider_chats');
-    if (savedChats) setChats(JSON.parse(savedChats));
-    
-    // Load messages for each chat
-    const savedMessages = {};
-    const chats = JSON.parse(savedChats || '[]');
-    chats.forEach(chat => {
-      const msgs = localStorage.getItem(`chat_${chat.id}_messages`);
-      if (msgs) savedMessages[chat.id] = JSON.parse(msgs);
-    });
-    if (Object.keys(savedMessages).length > 0) setMessages(savedMessages);
-  };
-  
-  loadSavedData();
-}, []);
-  // Save completed jobs
+    loadSavedData();
+  }, []);
+
   useEffect(() => {
     if (completedJobs.length > 0) {
       localStorage.setItem('provider_completed_jobs', JSON.stringify(completedJobs));
     }
   }, [completedJobs]);
 
-  // Save pending requests
   useEffect(() => {
     if (realTimeRequests.length > 0) {
       localStorage.setItem('provider_pending_requests', JSON.stringify(realTimeRequests));
     }
   }, [realTimeRequests]);
 
-  // ============ LOAD CHATS ============
   useEffect(() => {
     const savedChats = localStorage.getItem('provider_chats');
     if (savedChats) {
@@ -354,22 +426,17 @@ useEffect(() => {
     messageSound.current = new Audio('/notification.mp3');
   }, []);
 
-  // ============ SAVE CHATS ============
   useEffect(() => {
     if (chats.length > 0) {
       localStorage.setItem('provider_chats', JSON.stringify(chats));
     }
   }, [chats]);
 
-
-
-
-  // ============ CLEAN EXPIRED REQUESTS (30 days) ============
+  // ============ CLEAN EXPIRED REQUESTS ============
   useEffect(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Clean accepted jobs
     setAcceptedJobs(prev => {
       const valid = prev.filter(job => new Date(job.acceptedAt) > thirtyDaysAgo);
       if (valid.length !== prev.length) {
@@ -378,7 +445,6 @@ useEffect(() => {
       return valid;
     });
 
-    // Clean completed jobs (keep for 30 days)
     setCompletedJobs(prev => {
       const valid = prev.filter(job => new Date(job.completedAt) > thirtyDaysAgo);
       if (valid.length !== prev.length) {
@@ -387,7 +453,6 @@ useEffect(() => {
       return valid;
     });
 
-    // Clean pending requests (keep only those less than 7 days old)
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     
@@ -439,12 +504,12 @@ useEffect(() => {
 
   // ============ CALCULATE DISTANCE ============
   useEffect(() => {
-    if (!userLocation || !showNearbyOnly) {
+    if (!locationCoords || !showNearbyOnly) {
       setNearbyRequests(realTimeRequests);
       return;
     }
 
-    console.log('📍 User location:', userLocation);
+    console.log('📍 User location:', locationCoords);
     console.log('📦 Total requests:', realTimeRequests.length);
 
     const jobsWithDistance = realTimeRequests
@@ -454,8 +519,8 @@ useEffect(() => {
             job.locationCoords.lng) {
           
           const distance = calculateDistance(
-            userLocation.lat,
-            userLocation.lng,
+            locationCoords.lat,
+            locationCoords.lng,
             job.locationCoords.lat,
             job.locationCoords.lng
           );
@@ -473,7 +538,7 @@ useEffect(() => {
     console.log(`✅ Found ${jobsWithDistance.length} jobs within ${maxDistance}km`);
     setNearbyRequests(jobsWithDistance);
     
-  }, [realTimeRequests, userLocation, showNearbyOnly, maxDistance]);
+  }, [realTimeRequests, locationCoords, showNearbyOnly, maxDistance]);
 
   // ============ WEBSOCKET SETUP ============
   useEffect(() => {
@@ -515,7 +580,7 @@ useEffect(() => {
       }
     }
 
-    // ============ EVENT HANDLERS ============
+    // Event Handlers
     const handleConnected = () => {
       console.log('✅ Provider WebSocket connected');
       setConnected(true);
@@ -573,25 +638,22 @@ useEffect(() => {
         }
       });
       
-      // SAFE STRING EXTRACTION FUNCTION
       const getSafeString = (value, defaultValue = 'Service') => {
         if (!value) return defaultValue;
         if (typeof value === 'string') return value;
         if (typeof value === 'object') {
-          // Try to extract name from object
           return value.name || value.service || value.title || defaultValue;
         }
         return String(value);
       };
       
       const formattedRequests = requests.map(req => {
-        // Get service string safely
         const serviceValue = req.title || req.serviceType || req.service_type;
         const serviceString = getSafeString(serviceValue, 'Service');
         
         return {
           id: req.id || req._id,
-          service: serviceString, // Now guaranteed to be a string
+          service: serviceString,
           customer: getSafeString(req.customerName || req.customer, 'Customer'),
           customerId: req.customerId,
           location: req.location || 'Not specified',
@@ -608,7 +670,6 @@ useEffect(() => {
       });
       
       console.log(`📊 Setting ${formattedRequests.length} formatted requests to state`);
-      console.log('Sample formatted request:', formattedRequests[0]);
       
       setRealTimeRequests(formattedRequests);
       setActiveRequests(formattedRequests.length);
@@ -632,7 +693,6 @@ useEffect(() => {
       
       processedJobIds.current.add(jobData.id);
       
-      // SAFE STRING EXTRACTION FUNCTION
       const getSafeString = (value, defaultValue = 'Service') => {
         if (!value) return defaultValue;
         if (typeof value === 'string') return value;
@@ -651,13 +711,12 @@ useEffect(() => {
         
         const budgetValue = parseInt(jobData.budget?.replace(/[^0-9]/g, '')) || 0;
         
-        // Get service string safely
         const serviceValue = jobData.title || jobData.service_type;
         const serviceString = getSafeString(serviceValue, 'Service');
         
         const newRequest = {
           id: jobData.id || `job_${Date.now()}`,
-          service: serviceString, // Now guaranteed to be a string
+          service: serviceString,
           customer: getSafeString(jobData.customerName || jobData.customer, 'Customer'),
           customerId: jobData.customerId,
           location: jobData.location || 'Not specified',
@@ -678,7 +737,6 @@ useEffect(() => {
       
       setActiveRequests(prev => prev + 1);
       
-      // ✅ FIXED: Use serviceString instead of SERVICE_TYPES array
       if (settings.notifications.newJobAlerts) {
         const serviceString = getSafeString(jobData.title || jobData.service_type, 'Service');
         addNotification('info', `New ${serviceString} job available`);
@@ -698,17 +756,13 @@ useEffect(() => {
       
       const { chatId, message, senderId, senderName } = data;
     
-      // First, ensure the chat exists in chats array
       setChats(prevChats => {
         const chatExists = prevChats.some(chat => chat.id === chatId);
         if (!chatExists) {
-          // Find the related job/request to create chat
-          // First check in acceptedJobs
           let relatedJob = acceptedJobs.find(job => 
             job.customerId === senderId || job.id === chatId.replace('chat_', '')
           );
           
-          // If not found in acceptedJobs, check in completedJobs
           if (!relatedJob) {
             relatedJob = completedJobs.find(job => 
               job.customerId === senderId || job.id === chatId.replace('chat_', '')
@@ -738,11 +792,9 @@ useEffect(() => {
         return prevChats;
       });
     
-      // Update messages state
       setMessages(prev => {
         const chatMessages = prev[chatId] || [];
         
-        // Check if message already exists to prevent duplicates
         const messageExists = chatMessages.some(m => m.id === message.id);
         if (messageExists) {
           console.log('⚠️ Message already exists in provider, skipping duplicate');
@@ -766,7 +818,6 @@ useEffect(() => {
         };
       });
     
-      // Update chat list with last message and unread count
       setChats(prev => prev.map(chat => 
         chat.id === chatId 
           ? { 
@@ -780,15 +831,12 @@ useEffect(() => {
           : chat
       ));
     
-      // Update unread count and play sound
       if (senderId !== providerInfo.id) {
         setUnreadCount(prev => prev + 1);
         messageSound.current?.play().catch(e => console.log('Audio play failed:', e));
         
-        // Show in-app notification
         addNotification('info', `New message from ${senderName}: ${message.text.substring(0, 50)}${message.text.length > 50 ? '...' : ''}`);
         
-        // Show browser notification if enabled
         if (settings.notifications.pushNotifications && Notification.permission === 'granted') {
           new Notification(`💬 Message from ${senderName}`, {
             body: message.text,
@@ -797,7 +845,6 @@ useEffect(() => {
         }
       }
     
-      // If this is the active chat, mark as read
       if (activeChat?.id === chatId && senderId !== providerInfo.id) {
         setTimeout(() => {
           markAsRead(chatId);
@@ -968,7 +1015,7 @@ useEffect(() => {
       user_type: 'provider',
       token: token,
       service: providerInfo.serviceType,
-      location: userLocation
+      location: locationCoords
     });
     
     setTimeout(() => {
@@ -1258,7 +1305,8 @@ useEffect(() => {
         <div style={{
           ...styles.sidebar,
           width: sidebarCollapsed ? '80px' : '280px',
-          backgroundColor: settings.appearance.darkMode ? '#2d2d2d' : 'white'
+          backgroundColor: settings.appearance.darkMode ? '#2d2d2d' : 'white',
+          ...(window.innerWidth <= 768 && styles.responsiveStyles['@media (max-width: 768px)'].sidebar)
         }}>
           <div style={styles.sidebarHeader}>
             <div style={styles.logo}>
@@ -1407,9 +1455,9 @@ useEffect(() => {
               <h1 style={styles.pageTitle}>Provider Dashboard</h1>
               <p style={styles.pageSubtitle}>
                 Welcome back, <strong>{providerInfo.name}</strong>
-                {userAddress && (
+                {locationAddress && (
                   <span style={styles.locationBadge}>
-                    <FaMapMarkerAlt /> {userAddress.split(',')[0]}
+                    <FaMapMarkerAlt /> {locationAddress.split(',')[0]}
                   </span>
                 )}
               </p>
@@ -1419,11 +1467,11 @@ useEffect(() => {
               {/* Location Button */}
               <button 
                 style={styles.locationButton}
-                onClick={detectLocation}
-                disabled={locationLoading}
+                onClick={handleDetectLocation}
+                disabled={locationDetectionStatus === 'detecting'}
               >
-                <FaCrosshairs /> 
-                {locationLoading ? 'Detecting...' : 'Detect Location'}
+                <FaCrosshairs className={locationDetectionStatus === 'detecting' ? 'spin' : ''} /> 
+                {locationDetectionStatus === 'detecting' ? 'Detecting...' : 'Detect Location'}
               </button>
               
               {/* Notification Bell */}
@@ -1460,12 +1508,12 @@ useEffect(() => {
           </div>
 
           {/* ============ LOCATION CONTROLS ============ */}
-          {userLocation && (
+          {locationCoords && (
             <div style={styles.locationControls}>
               <div style={styles.locationInfo}>
                 <FaMapMarkerAlt style={{ color: '#3498db' }} />
                 <span style={styles.locationText}>
-                  {userAddress || `${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}`}
+                  {locationAddress || `${locationCoords.lat.toFixed(4)}, ${locationCoords.lng.toFixed(4)}`}
                 </span>
               </div>
               
@@ -1510,14 +1558,14 @@ useEffect(() => {
           )}
 
           {/* ============ MAP VIEW ============ */}
-          {showMap && userLocation && (
+          {showMap && locationCoords && (
             <div style={styles.mapContainer}>
               <LeafletMap 
                 providers={nearbyProviders}
                 onProviderSelect={handleSelectProvider}
-                initialLocation={userLocation}
+                initialLocation={locationCoords}
                 showUserLocation={true}
-                height="450px"
+                height={window.innerWidth < 768 ? "300px" : "450px"}
               />
             </div>
           )}
@@ -2576,7 +2624,7 @@ useEffect(() => {
   );
 };
 
-// ============ STYLES (Keep all your existing styles, they're fine) ============
+// ============ STYLES ============
 const styles = {
   container: {
     minHeight: '100vh',
@@ -3877,6 +3925,130 @@ const styles = {
     backgroundColor: 'white',
     borderRadius: '8px',
     border: '1px solid #e2e8f0',
+  },
+
+  // Responsive Styles
+  responsiveStyles: {
+    '@media (max-width: 768px)': {
+      dashboardGrid: {
+        flexDirection: 'column',
+      },
+      sidebar: {
+        width: '100%',
+        height: 'auto',
+        position: 'relative',
+      },
+      mainContent: {
+        padding: '15px',
+      },
+      statsGrid: {
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '10px',
+      },
+      jobsGrid: {
+        gridTemplateColumns: '1fr',
+      },
+      chatsLayout: {
+        gridTemplateColumns: '1fr',
+        height: 'auto',
+      },
+      chatList: {
+        maxHeight: '300px',
+      },
+      locationControls: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+      },
+      filterControls: {
+        width: '100%',
+        flexWrap: 'wrap',
+      },
+      header: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '15px',
+      },
+      headerRight: {
+        width: '100%',
+        justifyContent: 'space-between',
+      },
+      earningsSummary: {
+        gridTemplateColumns: '1fr',
+      },
+      settingsGrid: {
+        gridTemplateColumns: '1fr',
+      },
+      workingHoursRow: {
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: '10px',
+      },
+      modal: {
+        width: '95%',
+        padding: '20px',
+      },
+      modalGrid: {
+        gridTemplateColumns: '1fr',
+      },
+    },
+    
+    '@media (max-width: 480px)': {
+      statsGrid: {
+        gridTemplateColumns: '1fr',
+      },
+      jobHeader: {
+        flexDirection: 'column',
+        gap: '10px',
+      },
+      jobBudget: {
+        textAlign: 'left',
+      },
+      jobActions: {
+        flexDirection: 'column',
+      },
+      detailsButton: {
+        width: '100%',
+      },
+      acceptButton: {
+        width: '100%',
+      },
+      navItem: {
+        padding: '10px',
+      },
+      profileCard: {
+        padding: '15px',
+      },
+      locationText: {
+        maxWidth: '200px',
+      },
+      distanceSelect: {
+        width: '100%',
+      },
+      mapToggleBtn: {
+        width: '100%',
+        justifyContent: 'center',
+      },
+    },
+    
+    '@media (max-width: 360px)': {
+      pageTitle: {
+        fontSize: '24px',
+      },
+      statValue: {
+        fontSize: '18px',
+      },
+      statCard: {
+        padding: '15px',
+      },
+      chatListAvatar: {
+        width: '40px',
+        height: '40px',
+        fontSize: '16px',
+      },
+      messageBubble: {
+        maxWidth: '85%',
+      },
+    },
   },
 };
 
