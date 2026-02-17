@@ -225,7 +225,8 @@ useEffect(() => {
     console.log('📦 Sending request with coordinates:', requestData.locationCoords);
     
     try {
-      const response = await fetch('http://localhost:4000/api/requests', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/requests`, {
+
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

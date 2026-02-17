@@ -49,7 +49,7 @@ const MyOrders = () => {
       }
 
       // Fetch provider's accepted jobs from MongoDB via your API
-      const response = await fetch(`http://localhost:4000/api/auth/users/${user.id}/requests`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/users/${user.id}/requests`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -123,7 +123,7 @@ const MyOrders = () => {
     try {
       const token = localStorage.getItem('token');
       
-      const response = await fetch(`http://localhost:4000/api/requests/${orderId}/complete`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/auth/users/${user.id}/requests`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -434,3 +434,4 @@ const MyOrders = () => {
 };
 
 export default MyOrders;
+

@@ -158,7 +158,8 @@ const CustomerOrderTracking = () => {
       if (!customerInfo?.id) return;
       
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:4000/api/messages/${customerInfo.id}`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/messages/${customerInfo.id}`, {
+
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -185,7 +186,7 @@ const CustomerOrderTracking = () => {
         const token = localStorage.getItem('token');
         
         const response = await fetch(
-          `http://localhost:4000/api/auth/users/${customerInfo.id}/requests`,
+          `${process.env.REACT_APP_API_URL}/auth/users/${customerInfo.id}/requests`,
           {
             headers: {
               'Authorization': `Bearer ${token}`
@@ -462,7 +463,14 @@ const CustomerOrderTracking = () => {
     socket.on('disconnected', () => setConnected(false));
 
     // Connect socket if not connected
-    if (!socket.isConnected()) {
+    if (!socket.isConnected() && customerInfo?.id) {
+      console.log('🔌 Connecting WebSocket for customer:', customerInfo.id);
+      socket.updateAuth({
+        id: customerInfo.id,
+        name: customerInfo.name,
+        user_type: 'customer',
+        token: localStorage.getItem('token')
+      });
       socket.connect();
     }
 
@@ -569,7 +577,7 @@ const CustomerOrderTracking = () => {
     formData.append('chatId', activeChat.id);
 
     try {
-      const response = await fetch('/api/chat/upload', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/chat/upload`, {
         method: 'POST',
         body: formData,
         headers: {
@@ -701,7 +709,7 @@ const CustomerOrderTracking = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:4000/api/requests/${selectedRequest.id}/rate`, {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/requests/${selectedRequest.id}/rate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -734,7 +742,8 @@ const CustomerOrderTracking = () => {
   const handlePayment = async (request) => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:4000/api/payments/create', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/payments/create`, {
+
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -2373,3 +2382,4 @@ if (typeof document !== 'undefined') {
 }
 
 export default CustomerOrderTracking;
+

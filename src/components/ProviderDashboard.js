@@ -168,7 +168,7 @@ const loadMessagesFromServer = async () => {
     if (!providerInfo?.id) return;
     
     const token = localStorage.getItem('token');
-    const response = await fetch(`http://localhost:4000/api/messages/${providerInfo.id}`, {
+    const response = await fetch(`${process.env.REACT_APP_API_URL}/messages/${providerInfo.id}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
@@ -1064,7 +1064,7 @@ useEffect(() => {
     formData.append('chatId', activeChat.id);
 
     try {
-      const response = await fetch('/api/chat/upload', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/chat/upload`, {
         method: 'POST',
         body: formData,
         headers: {

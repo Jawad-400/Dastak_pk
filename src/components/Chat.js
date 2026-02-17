@@ -102,7 +102,7 @@ const Chat = ({ onClose }) => {
     formData.append('chatId', activeChat.id);
 
     try {
-      const response = await fetch('/api/chat/upload', {
+      const response = await fetch(`${process.env.REACT_APP_API_URL}/chat/upload`, {
         method: 'POST',
         body: formData,
         headers: {

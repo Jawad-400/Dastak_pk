@@ -1,7 +1,7 @@
-﻿// API service with WebSocket integration
+// API service with WebSocket integration
 import { socket } from './socket';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const process.env.REACT_APP_API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
 const api = {
   // Post a new service request
@@ -96,7 +96,7 @@ const api = {
           id: '1',
           service: 'Plumbing - Leak Repair',
           description: 'Kitchen sink leaking under cabinet',
-          budget: '₹2,500',
+          budget: '?2,500',
           location: 'Gulshan, Karachi',
           urgency: 'high',
           postedTime: '10 minutes ago'
@@ -105,7 +105,7 @@ const api = {
           id: '2', 
           service: 'AC Repair',
           description: 'AC not cooling properly, needs gas refill',
-          budget: '₹3,000',
+          budget: '?3,000',
           location: 'DHA Phase 5',
           urgency: 'medium',
           postedTime: '25 minutes ago'
@@ -114,7 +114,7 @@ const api = {
           id: '3',
           service: 'Electrical Wiring',
           description: 'Complete house wiring needed for new construction',
-          budget: '₹25,000',
+          budget: '?25,000',
           location: 'Bahria Town',
           urgency: 'low',
           postedTime: '1 hour ago'
@@ -139,7 +139,7 @@ const api = {
           service: 'Bathroom Plumbing',
           customerName: 'Ali Ahmed',
           customerPhone: '0300-1234567',
-          bidAmount: '₹2,800',
+          bidAmount: '?2,800',
           status: 'pending',
           submittedTime: '2 hours ago'
         },
@@ -149,7 +149,7 @@ const api = {
           service: 'AC Maintenance',
           customerName: 'Sara Khan',
           customerPhone: '0300-7654321',
-          bidAmount: '₹2,500',
+          bidAmount: '?2,500',
           status: 'accepted',
           submittedTime: '1 day ago'
         }
@@ -172,7 +172,7 @@ const api = {
           service: 'Bathroom Plumbing',
           description: 'Leaking tap and drainage issue',
           postedDate: '2024-01-20',
-          budget: '₹2,500',
+          budget: '?2,500',
           status: 'Orders Open',
           bidCount: 3,
           location: 'Gulshan, Karachi'
@@ -182,9 +182,9 @@ const api = {
           service: 'AC Gas Refill',
           description: 'AC not cooling properly',
           postedDate: '2024-01-19',
-          budget: '₹3,000',
+          budget: '?3,000',
           status: 'Order Accepted',
-          acceptedBid: '₹2,800',
+          acceptedBid: '?2,800',
           provider: 'Cool Masters'
         }
       ];

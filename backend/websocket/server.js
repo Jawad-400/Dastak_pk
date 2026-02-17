@@ -3,6 +3,8 @@ const { v4: uuidv4 } = require('uuid');
 const jwt = require('jsonwebtoken');
 const mongoDB = require('../config/mongodb');
 
+
+
 class WebSocketServer {
   constructor(server) {
     this.wss = new WebSocket.Server({ server, path: '/ws' });
@@ -78,7 +80,7 @@ class WebSocketServer {
           }
         }));
 
-        // ✅ SEND PENDING MESSAGES WHEN USER COMES ONLINE
+        // Send pending messages when user comes online
         await this.sendPendingMessages(userId);
 
         // Handle provider connection
@@ -141,7 +143,7 @@ class WebSocketServer {
     });
   }
 
-  // ============ NEW METHOD: Send pending messages to user ============
+  // Send pending messages to user when they come online
   async sendPendingMessages(userId) {
     try {
       const db = await mongoDB.connect();
@@ -199,101 +201,6 @@ class WebSocketServer {
       
     } catch (error) {
       console.error('Error sending pending messages:', error);
-    }
-  }
-
-  async handleChatMessage(clientId, chatData) {
-    const sender = this.clients.get(clientId);
-    if (!sender) return;
-  
-    const { chatId, message, receiverId, jobId } = chatData;
-  
-    console.log(`💬 Chat message from ${sender.name} to user ${receiverId}:`, message.text);
-  
-    // ✅ SAVE TO MONGODB
-    try {
-      const db = await mongoDB.connect();
-      const messagesCollection = db.collection('messages');
-      
-      await messagesCollection.insertOne({
-        chatId: chatId,
-        messageId: message.id,
-        text: message.text,
-        senderId: sender.userId,
-        senderName: sender.name,
-        receiverId: receiverId,
-        jobId: jobId,
-        timestamp: new Date(message.timestamp),
-        read: false,
-        delivered: false  // Mark as not delivered initially
-      });
-      
-      console.log(`✅ Message saved to MongoDB: ${message.id}`);
-    } catch (error) {
-      console.error('❌ Error saving message:', error);
-    }
-  
-    // ✅ Try to send to receiver if online
-    const delivered = this.sendToUser(receiverId, {
-      event: 'chat_message',
-      data: {
-        chatId,
-        message,
-        senderId: sender.userId,
-        senderName: sender.name,
-        receiverId
-      }
-    });
-    
-    // ✅ If delivered, mark as delivered in database
-    if (delivered) {
-      try {
-        const db = await mongoDB.connect();
-        const messagesCollection = db.collection('messages');
-        await messagesCollection.updateOne(
-          { messageId: message.id },
-          { $set: { delivered: true, deliveredAt: new Date() } }
-        );
-        console.log(`✅ Message ${message.id} delivered immediately`);
-      } catch (error) {
-        console.error('Error updating message delivery status:', error);
-      }
-    } else {
-      console.log(`⏸️ User ${receiverId} is offline, message saved for later delivery`);
-    }
-  }
-
-  async sendPendingRequests(clientId, serviceType) {
-    try {
-      const client = this.clients.get(clientId);
-      if (!client) return;
-
-      const db = await mongoDB.connect();
-      const ordersCollection = db.collection('orders');
-      
-      const query = { status: 'pending' };
-      if (serviceType && serviceType !== 'all' && serviceType !== 'undefined') {
-        query.$or = [
-          { serviceType: serviceType },
-          { service_type: serviceType }
-        ];
-      }
-      
-      const pendingRequests = await ordersCollection
-        .find(query)
-        .sort({ createdAt: -1 })
-        .limit(50)
-        .toArray();
-  
-      client.ws.send(JSON.stringify({
-        event: 'pending_requests',
-        data: pendingRequests
-      }));
-      
-      console.log(`📨 Sent ${pendingRequests.length} pending requests to provider ${client.name}`);
-      
-    } catch (error) {
-      console.error('Error sending pending requests:', error);
     }
   }
 
@@ -365,6 +272,67 @@ class WebSocketServer {
       }
     } catch (error) {
       console.error('Error handling message:', error);
+    }
+  }
+
+  async handleChatMessage(clientId, chatData) {
+    const sender = this.clients.get(clientId);
+    if (!sender) return;
+  
+    const { chatId, message, receiverId, jobId } = chatData;
+  
+    console.log(`💬 Chat message from ${sender.name} to user ${receiverId}:`, message.text);
+  
+    // Save to MongoDB
+    try {
+      const db = await mongoDB.connect();
+      const messagesCollection = db.collection('messages');
+      
+      await messagesCollection.insertOne({
+        chatId: chatId,
+        messageId: message.id,
+        text: message.text,
+        senderId: sender.userId,
+        senderName: sender.name,
+        receiverId: receiverId,
+        jobId: jobId,
+        timestamp: new Date(message.timestamp),
+        read: false,
+        delivered: false
+      });
+      
+      console.log(`✅ Message saved to MongoDB: ${message.id}`);
+    } catch (error) {
+      console.error('❌ Error saving message:', error);
+    }
+  
+    // Try to send to receiver if online
+    const delivered = this.sendToUser(receiverId, {
+      event: 'chat_message',
+      data: {
+        chatId,
+        message,
+        senderId: sender.userId,
+        senderName: sender.name,
+        receiverId
+      }
+    });
+    
+    // If delivered, mark as delivered in database
+    if (delivered) {
+      try {
+        const db = await mongoDB.connect();
+        const messagesCollection = db.collection('messages');
+        await messagesCollection.updateOne(
+          { messageId: message.id },
+          { $set: { delivered: true, deliveredAt: new Date() } }
+        );
+        console.log(`✅ Message ${message.id} delivered immediately`);
+      } catch (error) {
+        console.error('Error updating message delivery status:', error);
+      }
+    } else {
+      console.log(`⏸️ User ${receiverId} is offline, message saved for later delivery`);
     }
   }
 
@@ -494,8 +462,41 @@ class WebSocketServer {
     }
   }
 
-  // ============ HELPER METHODS ============
+  async sendPendingRequests(clientId, serviceType) {
+    try {
+      const client = this.clients.get(clientId);
+      if (!client) return;
 
+      const db = await mongoDB.connect();
+      const ordersCollection = db.collection('orders');
+      
+      const query = { status: 'pending' };
+      if (serviceType && serviceType !== 'all' && serviceType !== 'undefined') {
+        query.$or = [
+          { serviceType: serviceType },
+          { service_type: serviceType }
+        ];
+      }
+      
+      const pendingRequests = await ordersCollection
+        .find(query)
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .toArray();
+  
+      client.ws.send(JSON.stringify({
+        event: 'pending_requests',
+        data: pendingRequests
+      }));
+      
+      console.log(`📨 Sent ${pendingRequests.length} pending requests to provider ${client.name}`);
+      
+    } catch (error) {
+      console.error('Error sending pending requests:', error);
+    }
+  }
+
+  // Helper Methods
   sendToUser(userId, message) {
     for (const [clientId, client] of this.clients) {
       if (client.userId === userId && client.ws.readyState === WebSocket.OPEN) {
@@ -546,6 +547,33 @@ class WebSocketServer {
       if (client.type === 'provider') count++;
     }
     return count;
+  }
+
+  getStats() {
+    const stats = {
+      totalClients: this.clients.size,
+      providersByService: {},
+      onlineUsers: {
+        customers: 0,
+        providers: 0,
+        total: 0
+      }
+    };
+    
+    // Count providers by service
+    for (const [service, providers] of this.providersByService.entries()) {
+      stats.providersByService[service] = providers.size;
+    }
+    
+    // Count users by type
+    for (const [_, client] of this.clients) {
+      if (client.type === 'customer') stats.onlineUsers.customers++;
+      if (client.type === 'provider') stats.onlineUsers.providers++;
+    }
+    
+    stats.onlineUsers.total = stats.onlineUsers.customers + stats.onlineUsers.providers;
+    
+    return stats;
   }
 }
 

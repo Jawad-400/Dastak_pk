@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const mongoDB = require('../config/mongodb');
 
+console.log('✅ messages.js loaded');
+
 // Get all messages for a user
 router.get('/:userId', async (req, res) => {
   try {

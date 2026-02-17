@@ -6,9 +6,10 @@ class WebSocketService {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 20;
     this.reconnectDelay = 1000;
-    this.url = process.env.REACT_APP_WS_URL || 'ws://localhost:4000/ws';
-    
-    this.initializeAuth();
+// Remove /api from the base URL before adding /ws
+this.url = process.env.REACT_APP_WS_URL 
+  ? `${process.env.REACT_APP_WS_URL}/ws` 
+  : `${process.env.REACT_APP_API_URL?.replace('http', 'ws')}/ws`;
     
     this.isManualDisconnect = false;
     this.messageQueue = [];
@@ -113,23 +114,28 @@ class WebSocketService {
 
   buildUrl() {
     const params = new URLSearchParams(this.queryParams);
-    return `${this.url}?${params.toString()}`;
+    // Ensure the URL ends with /ws
+    let baseUrl = this.url;
+    if (!baseUrl.endsWith('/ws')) {
+      baseUrl = baseUrl.endsWith('/') ? `${baseUrl}ws` : `${baseUrl}/ws`;
+    }
+    return `${baseUrl}?${params.toString()}`;
   }
 
   connect() {
     if (this.connectionLock) {
-      console.log('🔒 Connection already in progress');
+      console.log('?? Connection already in progress');
       return;
     }
 
     if (this.isConnected()) {
-      console.log('✅ Already connected');
+      console.log('? Already connected');
       this.dispatchEvent('connected', { connected: true });
       return;
     }
 
     if (!this.queryParams.token) {
-      console.log('⏸️ No token available');
+      console.log('?? No token available');
       return;
     }
 
@@ -139,7 +145,7 @@ class WebSocketService {
     this.forcedClose = false;
     
     const fullUrl = this.buildUrl();
-    console.log(`🔗 Connecting to WebSocket with URL:`, fullUrl);
+    console.log(`?? Connecting to WebSocket with URL:`, fullUrl);
     
     try {
       if (this.socket) {
@@ -158,7 +164,7 @@ class WebSocketService {
       this.socket.onerror = this.handleError;
 
     } catch (error) {
-      console.error('❌ Failed to create WebSocket:', error);
+      console.error('? Failed to create WebSocket:', error);
       this.isConnecting = false;
       this.connectionLock = false;
       this.scheduleReconnect();
@@ -166,7 +172,7 @@ class WebSocketService {
   }
 
   handleOpen = (event) => {
-    console.log('✅✅✅ WebSocket CONNECTED!', event);
+    console.log('??? WebSocket CONNECTED!', event);
     this.connected = true;
     this.isConnecting = false;
     this.connectionLock = false;
@@ -178,7 +184,7 @@ class WebSocketService {
     
     // Request pending requests immediately after connection for providers
     if (this.queryParams.type === 'provider') {
-      console.log('👷 Provider connected, requesting pending requests...');
+      console.log('?? Provider connected, requesting pending requests...');
       setTimeout(() => {
         this.getPendingRequests();
       }, 500);
@@ -192,11 +198,11 @@ class WebSocketService {
 
   handleMessage = (event) => {
     const rawData = event.data;
-    console.log('📨 WebSocket message received:', rawData);
+    console.log('?? WebSocket message received:', rawData);
     
     try {
       const data = JSON.parse(rawData);
-      console.log('📦 Parsed message:', data);
+      console.log('?? Parsed message:', data);
       
       // Handle pong responses
       if (data.event === 'pong') {
@@ -206,7 +212,7 @@ class WebSocketService {
       
       // Handle welcome message
       if (data.event === 'welcome') {
-        console.log('👋 Welcome message:', data.data);
+        console.log('?? Welcome message:', data.data);
         this.dispatchEvent('welcome', data.data);
         return;
       }
@@ -214,7 +220,7 @@ class WebSocketService {
       // Handle pending_requests specifically
       if (data.event === 'pending_requests') {
         const requests = data.data || [];
-        console.log(`📨 Received ${requests.length} pending requests:`, requests);
+        console.log(`?? Received ${requests.length} pending requests:`, requests);
         
         // Store the data for this event type
         this.lastData.set('pending_requests', requests);
@@ -230,7 +236,7 @@ class WebSocketService {
       
       // Handle new_request event
       else if (data.event === 'new_request') {
-        console.log('🆕 New request received:', data.data);
+        console.log('?? New request received:', data.data);
         
         // Update stored pending requests if they exist
         const currentRequests = this.lastData.get('pending_requests') || [];
@@ -247,18 +253,18 @@ class WebSocketService {
       
       // Handle all other events
       else if (data.event) {
-        console.log(`📨 Dispatching event: ${data.event}`, data.data);
+        console.log(`?? Dispatching event: ${data.event}`, data.data);
         this.dispatchEvent(data.event, data.data || data);
         this.dispatchEvent('message', data);
       }
       
     } catch (error) {
-      console.error('❌ Error parsing WebSocket message:', error, rawData);
+      console.error('? Error parsing WebSocket message:', error, rawData);
     }
   };
 
   handleClose = (event) => {
-    console.log('❌ WebSocket closed. Code:', event.code, 'Reason:', event.reason);
+    console.log('? WebSocket closed. Code:', event.code, 'Reason:', event.reason);
     
     this.connected = false;
     this.isConnecting = false;
@@ -273,12 +279,12 @@ class WebSocketService {
     });
     
     if (this.isManualDisconnect || this.forcedClose) {
-      console.log('👋 Manual disconnect - not reconnecting');
+      console.log('?? Manual disconnect - not reconnecting');
       return;
     }
     
     if (!this.queryParams.token) {
-      console.log('⏸️ No token - not reconnecting');
+      console.log('?? No token - not reconnecting');
       return;
     }
     
@@ -286,7 +292,7 @@ class WebSocketService {
   };
 
   handleError = (error) => {
-    console.error('❌ WebSocket error:', error);
+    console.error('? WebSocket error:', error);
     this.dispatchEvent('error', { error });
   };
 
@@ -301,7 +307,7 @@ class WebSocketService {
     
     this.heartbeatCheck = setInterval(() => {
       if (this.isConnected() && Date.now() - this.lastPong > 40000) {
-        console.log('⚠️ No pong received for 40s, reconnecting...');
+        console.log('?? No pong received for 40s, reconnecting...');
         this.reconnect();
       }
     }, 30000);
@@ -324,21 +330,21 @@ class WebSocketService {
     this.reconnectAttempts++;
     
     if (this.reconnectAttempts <= this.maxReconnectAttempts) {
-      console.log(`🔄 Reconnecting in ${Math.round(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      console.log(`?? Reconnecting in ${Math.round(delay/1000)}s (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
       
       setTimeout(() => {
         this.connectionLock = false;
         this.connect();
       }, delay);
     } else {
-      console.log('❌ Max reconnection attempts reached');
+      console.log('? Max reconnection attempts reached');
       this.dispatchEvent('max_reconnect', { attempts: this.reconnectAttempts });
     }
   }
 
   send(event, data = {}) {
     if (!this.isConnected()) {
-      console.log(`📤 Queueing message: ${event} (not connected)`);
+      console.log(`?? Queueing message: ${event} (not connected)`);
       this.messageQueue.push({ event, data });
       
       if (!this.isConnecting && !this.connectionLock && this.queryParams.token) {
@@ -355,11 +361,11 @@ class WebSocketService {
 
     try {
       const messageStr = JSON.stringify(message);
-      console.log(`📤 Sending message: ${event}`, data);
+      console.log(`?? Sending message: ${event}`, data);
       this.socket.send(messageStr);
       return true;
     } catch (error) {
-      console.error('❌ Send error:', error);
+      console.error('? Send error:', error);
       this.messageQueue.push({ event, data });
       return false;
     }
@@ -371,7 +377,7 @@ class WebSocketService {
 
   // Special method for providers to get pending requests
   getPendingRequests() {
-    console.log('📨 Requesting pending requests from server...');
+    console.log('?? Requesting pending requests from server...');
     return this.send('get_pending_requests', { 
       provider_id: this.queryParams.user_id,
       service: this.queryParams.service 
@@ -381,7 +387,7 @@ class WebSocketService {
   flushMessageQueue() {
     if (this.messageQueue.length === 0) return;
     
-    console.log(`📤 Flushing ${this.messageQueue.length} queued messages`);
+    console.log(`?? Flushing ${this.messageQueue.length} queued messages`);
     const queue = [...this.messageQueue];
     this.messageQueue = [];
     
@@ -396,11 +402,11 @@ class WebSocketService {
       this.eventListeners.set(event, new Set());
     }
     this.eventListeners.get(event).add(callback);
-    console.log(`👂 Listener added for event: ${event}, total listeners: ${this.eventListeners.get(event).size}`);
+    console.log(`?? Listener added for event: ${event}, total listeners: ${this.eventListeners.get(event).size}`);
     
     // If we have stored data for this event, call the callback immediately
     if (this.lastData.has(event)) {
-      console.log(`📦 Found cached data for ${event}, calling callback immediately`);
+      console.log(`?? Found cached data for ${event}, calling callback immediately`);
       setTimeout(() => {
         try {
           callback(this.lastData.get(event));
@@ -416,7 +422,7 @@ class WebSocketService {
   off(event, callback) {
     if (this.eventListeners.has(event)) {
       this.eventListeners.get(event).delete(callback);
-      console.log(`👂 Listener removed for event: ${event}, remaining: ${this.eventListeners.get(event).size}`);
+      console.log(`?? Listener removed for event: ${event}, remaining: ${this.eventListeners.get(event).size}`);
     }
     return this;
   }
@@ -424,7 +430,7 @@ class WebSocketService {
   dispatchEvent(event, data) {
     if (this.eventListeners.has(event)) {
       const listeners = this.eventListeners.get(event);
-      console.log(`📢 Dispatching event: ${event} to ${listeners.size} listeners`);
+      console.log(`?? Dispatching event: ${event} to ${listeners.size} listeners`);
       listeners.forEach(callback => {
         try {
           callback(data);
@@ -433,13 +439,13 @@ class WebSocketService {
         }
       });
     } else {
-      console.log(`📢 No listeners for event: ${event}`);
+      console.log(`?? No listeners for event: ${event}`);
     }
   }
 
   // ========== CONNECTION MANAGEMENT ==========
   reconnect() {
-    console.log('🔄 Manual reconnect triggered');
+    console.log('?? Manual reconnect triggered');
     this.isManualDisconnect = false;
     this.forcedClose = false;
     this.disconnect();
@@ -467,7 +473,7 @@ class WebSocketService {
     }
     
     this.connected = false;
-    console.log('👋 Disconnected');
+    console.log('?? Disconnected');
   }
 
   isConnected() {
