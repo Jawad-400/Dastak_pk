@@ -49,18 +49,16 @@ class MongoDB {
       console.log('🔄 Creating new MongoDB connection...');
       console.log(`📊 Target database: ${dbName}`);
 
-      // Configure connection options optimized for Render
       this.client = new MongoClient(uri, {
-        maxPoolSize: 10,
-        minPoolSize: 2,
-        maxIdleTimeMS: 30000,
+        maxPoolSize: 50,        // Increased from 10
+        minPoolSize: 5,         // Increased from 2
+        maxIdleTimeMS: 60000,   // Increased from 30000 (60 seconds)
         connectTimeoutMS: 10000,
         socketTimeoutMS: 45000,
         serverSelectionTimeoutMS: 5000,
-        heartbeatFrequencyMS: 10000,
+        heartbeatFrequencyMS: 30000, // Increased from 10000
         retryWrites: true,
         retryReads: true,
-        // Add these for better stability on Render
         w: 'majority',
         readPreference: 'primaryPreferred'
       });
@@ -80,15 +78,7 @@ class MongoDB {
       );
 
       // Setup connection event handlers
-      this.client.on('connectionReady', () => {
-        console.log('🔌 MongoDB connection ready');
-      });
 
-      this.client.on('connectionClosed', () => {
-        console.log('🔌 MongoDB connection closed');
-        this.isConnected = false;
-        this.connectionPromise = null;
-      });
 
       this.client.on('error', (err) => {
         console.error('❌ MongoDB client error:', err.message);

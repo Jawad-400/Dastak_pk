@@ -26,7 +26,6 @@ import CustomerLogin from './components/auth/CustomerLogin';
 import ProviderPortal from './components/ProviderPortal';
 import ProviderDashboard from './components/ProviderDashboard';
 import Allservices from './components/provider/Allservices';
-import PlaceorderModal from './components/PostRequest';
 import MyOrders from './components/provider/MyOrders';
 
 //==============================footer pages =============================//
@@ -115,7 +114,7 @@ function AppContent() {
         <Route path="/provider-portal" element={<ProviderPortalPage />} />
         <Route path="/provider-dashboard" element={<ProviderDashboardPage />} />
         <Route path="/provider/jobs" element={<Allservices />} />
-        <Route path="/provider/place-order" element={<PlaceorderModal />} />
+        {/* <Route path="/provider/place-order" element={<PlaceorderModal />} /> */}
         <Route path="/my-orders" element={<MyOrders />} />
         <Route path="/find-jobs" element={<Allservices />} />
 
