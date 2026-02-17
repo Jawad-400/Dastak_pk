@@ -124,21 +124,23 @@ this.url = process.env.REACT_APP_WS_URL
 
   connect() {
     if (this.connectionLock) {
-      console.log('?? Connection already in progress');
+      console.log('Connection already in progress');
       return;
     }
-
-    if (this.isConnected()) {
-      console.log('? Already connected');
-      this.dispatchEvent('connected', { connected: true });
+  
+    // Ensure queryParams exists
+    if (!this.queryParams) {
+      console.log('⚠️ queryParams is undefined, reinitializing...');
+      this.initializeAuth();
+    }
+  
+    if (!this.queryParams || !this.queryParams.token) {
+      console.log('❌ No token available - cannot connect WebSocket');
+      this.dispatchEvent('error', { 
+        error: 'No token provided. Please login.' 
+      });
       return;
     }
-
-    if (!this.queryParams.token) {
-      console.log('?? No token available');
-      return;
-    }
-
     this.connectionLock = true;
     this.isManualDisconnect = false;
     this.isConnecting = true;
@@ -149,7 +151,7 @@ this.url = process.env.REACT_APP_WS_URL
     
     try {
       if (this.socket) {
-        try {
+        try { 
           this.socket.close();
         } catch (e) {}
         this.socket = null;

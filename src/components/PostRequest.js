@@ -106,7 +106,12 @@ useEffect(() => {
 // In PostRequest.js - FIX SOCKET LISTENERS
 // WebSocket connection
 useEffect(() => {
-  socket.connect();
+  if (user && token) {
+    console.log('🔌 Connecting socket for user:', user.id);
+    socket.connect();
+  } else {
+    console.log('⏸️ No user, skipping socket connection');
+  } 
   
   const handleConnect = () => setSocketConnected(true);
   const handleDisconnect = () => setSocketConnected(false);
